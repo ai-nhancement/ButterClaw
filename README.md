@@ -47,27 +47,27 @@ ButterClaw takes the parts each project does best and combines them.
 
 ## How the Codebases Compare
 
-This is not a claim — it is a comparison of what exists in each codebase as of March 2026.
+This is not a claim — it is a comparison of what exists in each codebase as of March 2026. The ButterClaw column tracks what has been ported so far.
 
-| Capability | AiMe (Python, local) | OpenClaw (TypeScript, distributed) |
-|-----------|------|----------|
-| **Append-only evidence ledger** | Immutable SQLite, 3-tier (ledger + User Truth + Verifiable Assistant Truth), WAL mode | None — session transcripts in JSON DAG format |
-| **Truth separation** | User Truth vs. VAT formally enforced; WordNet + Wikidata external anchors; blocks inference when integrity fails | None |
-| **Living portrait (user model)** | Six layers: identity anchors, relational graph, active concerns, commitments, behavioral fingerprint, patterns; temporal decay per fact class; concern arcs with lifecycle tracking | SOUL.md — static markdown file, user-edited manually, no auto-learning |
-| **Governed initiative** | ThalamoFrontalLoop: 6 signal producers, 5 absence tiers, significance gating, spam prevention, preference learning, deferred signals | Cron scheduler with multi-delivery modes (announce, webhook). No significance gating or absence awareness |
-| **Significance scoring** | Three-layer: affect (0.30) + novelty (0.30) + resolution (0.25) + echo (0.15); plus email, event, and semantic scorers | None |
-| **Temporal scoping** | Per-fact-class decay windows (permanent → momentary), half-life math, reaffirmation tracking, time-windowed retrieval | Optional temporal decay multiplier on memory search results |
-| **Behavioral integrity** | RIC (5-factor: groundedness, calibration, transparency, helpfulness, pressure resistance), SRL (4 traits, honesty gate, drift index, 34 tests), UVRG (demonstrated values) | None |
-| **Value extraction** | Ethos pipeline: 15 values, `score = demonstrations x significance x resistance x consistency`, no LLM calls | None |
-| **Memory search** | Hybrid RRF fusion (Meilisearch + Qdrant), rolling topic vectors, significance filtering, pair-aware context | Embeddings-based vector search with optional MMR and temporal decay |
-| **Context management** | CerebralCortex pipeline with stage-based processing | Pluggable context engine with LLM-powered compaction |
-| **Model routing** | Six governed lanes (base, vision, planning, tech, local, game) with rotation | Ordered fallback chain with cooldown tracking, auth-profile-aware |
-| **Multi-agent** | Single instance | Subagent spawning with registry, TTL management, workspace isolation, announcement queue |
-| **Messaging channels** | Local web UI only | **87 platforms**: WhatsApp, Discord, Telegram, Slack, Teams, Signal, Matrix, IRC, iMessage, LINE, and 77 more |
-| **Gateway API** | FastAPI web server | Full WebSocket + HTTP API, OpenResponses-compatible streaming |
-| **Security** | Basic | Deep audit framework with per-channel policies, tool approval, command gating |
-| **Plugin SDK** | Internal plugin bus | Full extension model: channels, providers, memory backends, media, search |
-| **Relationship model** | The Bond — persistent relational primitive with trust, demonstrated values, and integrity measured over time | None — interaction is session-based, not relational |
+| Capability | AiMe | OpenClaw | ButterClaw |
+|-----------|------|----------|------------|
+| **Append-only evidence ledger** | Immutable SQLite, 3-tier (ledger + UT + VAT), WAL mode | None — session transcripts in JSON DAG | Planned |
+| **Truth separation** | UT vs. VAT enforced; WordNet + Wikidata anchors; blocks inference on failure | None | **4-class classification + grounding monitor** (17 tests) |
+| **Living portrait (user model)** | 6 layers: identity, relational graph, concerns, commitments, fingerprint, patterns; temporal decay; concern arcs | SOUL.md — static, user-edited, no auto-learning | Planned |
+| **Governed initiative** | ThalamoFrontalLoop: 6 producers, 5 absence tiers, significance gating, spam prevention, preference learning | Cron scheduler with multi-delivery. No significance gating | Planned |
+| **Significance scoring** | 3-layer: affect + novelty + resolution + echo; email, event, semantic scorers | None | Planned |
+| **Temporal scoping** | Per-fact-class decay (permanent → momentary), half-life math, reaffirmation, windowed retrieval | Optional temporal decay on memory search | Planned |
+| **Behavioral integrity** | RIC (5-factor), SRL (4 traits, honesty gate, drift index, 34 tests), UVRG | None | Planned |
+| **Value extraction** | Ethos pipeline: 15 values, `demos x significance x resistance x consistency`, no LLM calls | None | Planned |
+| **Memory search** | Hybrid RRF fusion (Meilisearch + Qdrant), rolling topic vectors, significance filtering | Embeddings vector search with optional MMR and temporal decay | Inherited from OpenClaw |
+| **Context management** | CerebralCortex pipeline with stage-based processing | Pluggable context engine with LLM-powered compaction | Inherited + truth boundary wrapper |
+| **Model routing** | 6 governed lanes with rotation | Ordered fallback chain with cooldown, auth-profile-aware | Inherited from OpenClaw |
+| **Multi-agent** | Single instance | Subagent spawning with registry, TTL, workspace isolation | Inherited from OpenClaw |
+| **Messaging channels** | Local web UI only | **87 platforms**: WhatsApp, Discord, Telegram, Slack, Signal, Matrix, Teams, IRC, iMessage, LINE + 77 more | Inherited from OpenClaw |
+| **Gateway API** | FastAPI web server | Full WebSocket + HTTP, OpenResponses-compatible streaming | Inherited from OpenClaw |
+| **Security** | Basic | Deep audit framework, per-channel policies, tool approval, command gating | Inherited from OpenClaw |
+| **Plugin SDK** | Internal plugin bus | Full extension model: channels, providers, memory, media, search | Inherited from OpenClaw |
+| **Relationship model** | The Bond — persistent relational primitive with trust, demonstrated values, integrity over time | None — session-based, not relational | Planned |
 
 **AiMe treats the user-AI interaction as a relationship. OpenClaw treats it as a session. ButterClaw brings the relationship to the platform.**
 

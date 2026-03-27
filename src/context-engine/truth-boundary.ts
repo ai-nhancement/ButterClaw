@@ -49,6 +49,99 @@ const GROUNDING_WARNING = 0.4;
 const SNAPSHOT_WINDOW = 200;
 const MAX_STORE_ENTRIES = 500;
 
+/** Below this fraction of token budget remaining, drop low-importance messages */
+const BUDGET_PRESSURE_THRESHOLD = 0.25;
+
+// ---------------------------------------------------------------------------
+// Importance-weighted scoring
+// ---------------------------------------------------------------------------
+
+/** Rough token estimate: ~4 chars per token */
+function estimateTokens(msg: AgentMessage): number {
+  const content =
+    typeof msg.content === "string"
+      ? msg.content
+      : JSON.stringify(msg.content);
+  return Math.ceil(content.length / 4);
+}
+
+/**
+ * Importance multiplier based on truth classification.
+ *
+ * Maps truth class to a multiplier that affects message priority during
+ * budget-constrained assembly:
+ *
+ *   user_truth  → 1.4  (highest priority — user's own statements)
+ *   grounded    → 1.2  (tool-verified facts)
+ *   unclassified→ 1.0  (neutral — legacy or unknown)
+ *   ungrounded  → 0.6  (lowest priority — agent claims without evidence)
+ */
+function importanceMultiplier(meta: TruthMeta): number {
+  switch (meta.truthClass) {
+    case "user_truth": return 1.4;
+    case "grounded": return 1.2;
+    case "unclassified": return 1.0;
+    case "ungrounded": return 0.6;
+  }
+}
+
+/**
+ * Under budget pressure, filter out low-importance ungrounded messages
+ * from the assembled context. Preserves message order and never drops
+ * user messages or the most recent N messages (to maintain coherence).
+ */
+function applyImportanceFilter(
+  messages: AgentMessage[],
+  sessionId: string,
+  store: TruthMetadataStore,
+  tokenBudget: number | undefined,
+  estimatedTokens: number,
+): AgentMessage[] {
+  if (!tokenBudget || tokenBudget <= 0) return messages;
+
+  const budgetRemaining = tokenBudget - estimatedTokens;
+  const budgetRatio = budgetRemaining / tokenBudget;
+
+  // Only filter when under pressure
+  if (budgetRatio >= BUDGET_PRESSURE_THRESHOLD) return messages;
+
+  // Never drop the last 6 messages (current conversation coherence)
+  const protectedCount = Math.min(6, messages.length);
+  const protectedStart = messages.length - protectedCount;
+
+  const filtered: AgentMessage[] = [];
+  let savedTokens = 0;
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+
+    // Always keep protected recent messages
+    if (i >= protectedStart) {
+      filtered.push(msg);
+      continue;
+    }
+
+    // Always keep user messages (they're authoritative context)
+    if ((msg.role as string) === "user") {
+      filtered.push(msg);
+      continue;
+    }
+
+    const meta = store.getOrDefault(sessionId, msg, i);
+    const multiplier = importanceMultiplier(meta);
+
+    // Drop ungrounded messages (multiplier < 1.0) when under pressure
+    if (multiplier < 1.0) {
+      savedTokens += estimateTokens(msg);
+      continue;
+    }
+
+    filtered.push(msg);
+  }
+
+  return filtered;
+}
+
 /**
  * Classify a single message based on its role and turn context.
  *
@@ -418,11 +511,25 @@ export class TruthBoundaryContextEngine implements ContextEngine {
 
     const result = await this.base.assemble(params);
 
+    // Importance-weighted filtering: under budget pressure, drop ungrounded messages.
+    // If base engine reports 0 tokens, estimate from message content.
+    const tokensEstimate = result.estimatedTokens > 0
+      ? result.estimatedTokens
+      : result.messages.reduce((sum, m) => sum + estimateTokens(m), 0);
+
+    const filteredMessages = applyImportanceFilter(
+      result.messages,
+      params.sessionId,
+      this.store,
+      params.tokenBudget,
+      tokensEstimate,
+    );
+
     // Compute grounding health
     const allMetas = this.store.allMetas(params.sessionId);
     const snapshot = computeGroundingSnapshot(allMetas);
     const healthNotice = formatGroundingHealthNotice(snapshot);
-    const annotations = formatTruthAnnotations(result.messages, params.sessionId, this.store);
+    const annotations = formatTruthAnnotations(filteredMessages, params.sessionId, this.store);
 
     // Combine into systemPromptAddition
     const additions: string[] = [];
@@ -432,6 +539,7 @@ export class TruthBoundaryContextEngine implements ContextEngine {
 
     return {
       ...result,
+      messages: filteredMessages,
       systemPromptAddition: additions.length > 0 ? additions.join("\n\n") : undefined,
     };
   }
@@ -494,4 +602,4 @@ export class TruthBoundaryContextEngine implements ContextEngine {
 //
 // ---------------------------------------------------------------------------
 
-export { formatTruthAnnotations };
+export { formatTruthAnnotations, importanceMultiplier, applyImportanceFilter };

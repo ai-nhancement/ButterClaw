@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { TruthBoundaryContextEngine, computeGroundingSnapshot } from "./truth-boundary.js";
+import { TruthBoundaryContextEngine, computeGroundingSnapshot, importanceMultiplier } from "./truth-boundary.js";
 import { LegacyContextEngine } from "./legacy.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 
@@ -274,6 +274,122 @@ describe("TruthBoundaryContextEngine", () => {
       // Verify cleanup — assembling empty session should produce no annotations
       const result = await engine.assemble({ sessionId: "child-1", messages: [] });
       expect(result.systemPromptAddition).toBeUndefined();
+    });
+  });
+
+  describe("importanceMultiplier", () => {
+    it("ranks user_truth highest", () => {
+      expect(importanceMultiplier({ truthClass: "user_truth", confidence: 1 })).toBe(1.4);
+    });
+
+    it("ranks grounded above neutral", () => {
+      expect(importanceMultiplier({ truthClass: "grounded", confidence: 1 })).toBe(1.2);
+    });
+
+    it("ranks ungrounded lowest", () => {
+      expect(importanceMultiplier({ truthClass: "ungrounded", confidence: 0.8 })).toBe(0.6);
+    });
+
+    it("ranks unclassified as neutral", () => {
+      expect(importanceMultiplier({ truthClass: "unclassified", confidence: 0.5 })).toBe(1.0);
+    });
+  });
+
+  describe("importance-weighted filtering under budget pressure", () => {
+    it("drops ungrounded assistant messages when budget is tight", async () => {
+      const engine = createEngine();
+
+      // Build conversation: early ungrounded turns, then enough recent messages
+      // to fill the 6-message protected zone with grounded content.
+      const messages = [
+        // Turn 1: no tools — ungrounded (OUTSIDE protected zone)
+        msg("user", "What's the weather?", 1000),
+        msg("assistant", "I think it might be sunny today.", 1001),
+        // Turn 2: no tools — ungrounded (OUTSIDE protected zone)
+        msg("user", "What about tomorrow?", 1002),
+        msg("assistant", "Probably rainy I guess.", 1003),
+        // Turn 3: no tools — ungrounded (OUTSIDE protected zone)
+        msg("user", "And the weekend?", 1004),
+        msg("assistant", "Maybe cloudy but I'm not sure.", 1005),
+        // Turn 4: with tools — grounded (INSIDE protected zone, last 6)
+        msg("user", "Check my actual calendar", 1006),
+        msg("tool", "Saturday: BBQ at noon", 1007),
+        msg("assistant", "You have a BBQ Saturday at noon.", 1008),
+        // Turn 5: recent exchange (INSIDE protected zone)
+        msg("user", "Great thanks", 1009),
+        msg("assistant", "You're welcome!", 1010),
+      ];
+
+      // Ingest turn 1
+      await engine.ingestBatch({ sessionId: "s1", messages: messages.slice(0, 2) });
+      await engine.afterTurn({ sessionId: "s1", sessionFile: "/tmp/t.json", messages: [], prePromptMessageCount: 0 });
+      // Ingest turn 2
+      await engine.ingestBatch({ sessionId: "s1", messages: messages.slice(2, 4) });
+      await engine.afterTurn({ sessionId: "s1", sessionFile: "/tmp/t.json", messages: [], prePromptMessageCount: 0 });
+      // Ingest turn 3
+      await engine.ingestBatch({ sessionId: "s1", messages: messages.slice(4, 6) });
+      await engine.afterTurn({ sessionId: "s1", sessionFile: "/tmp/t.json", messages: [], prePromptMessageCount: 0 });
+      // Ingest turn 4 (with tools)
+      await engine.ingestBatch({ sessionId: "s1", messages: messages.slice(6, 9) });
+      await engine.afterTurn({ sessionId: "s1", sessionFile: "/tmp/t.json", messages: [], prePromptMessageCount: 0 });
+      // Ingest turn 5
+      await engine.ingestBatch({ sessionId: "s1", messages: messages.slice(9) });
+
+      // Budget of 1 guarantees pressure: estimated tokens > 75% of budget
+      const result = await engine.assemble({
+        sessionId: "s1",
+        messages,
+        tokenBudget: 1,
+      });
+
+      // All 6 user messages should survive (never dropped)
+      const userMsgs = result.messages.filter((m) => (m.role as string) === "user");
+      expect(userMsgs.length).toBe(5);
+
+      // The 3 early ungrounded assistant messages should be dropped
+      expect(result.messages.length).toBeLessThan(messages.length);
+
+      // The grounded assistant message (BBQ) should survive
+      const assistantTexts = result.messages
+        .filter((m) => (m.role as string) === "assistant")
+        .map((m) => m.content as string);
+      expect(assistantTexts.some((t) => t.includes("BBQ"))).toBe(true);
+    });
+
+    it("does not filter when budget is comfortable", async () => {
+      const engine = createEngine();
+      const messages = [
+        msg("user", "Hello", 1000),
+        msg("assistant", "Hi there!", 1001),
+      ];
+
+      await engine.ingestBatch({ sessionId: "s1", messages });
+
+      const result = await engine.assemble({
+        sessionId: "s1",
+        messages,
+        tokenBudget: 100000, // Plenty of room
+      });
+
+      expect(result.messages.length).toBe(messages.length);
+    });
+
+    it("does not filter when no budget specified", async () => {
+      const engine = createEngine();
+      const messages = [
+        msg("user", "Hello", 1000),
+        msg("assistant", "Ungrounded claim", 1001),
+      ];
+
+      await engine.ingestBatch({ sessionId: "s1", messages });
+
+      const result = await engine.assemble({
+        sessionId: "s1",
+        messages,
+        // No tokenBudget
+      });
+
+      expect(result.messages.length).toBe(messages.length);
     });
   });
 

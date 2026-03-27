@@ -23,3 +23,16 @@ export { LegacyContextEngine, registerLegacyContextEngine } from "./legacy.js";
 export { delegateCompactionToRuntime } from "./delegate.js";
 
 export { ensureContextEnginesInitialized } from "./init.js";
+
+export {
+  TruthBoundaryContextEngine,
+  computeGroundingSnapshot,
+  formatGroundingHealthNotice,
+  formatTruthAnnotations,
+} from "./truth-boundary.js";
+export type {
+  TruthClass,
+  TruthMeta,
+  GroundingTier,
+  GroundingSnapshot,
+} from "./truth-boundary.js";

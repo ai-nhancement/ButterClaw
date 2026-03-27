@@ -462,8 +462,11 @@ export class TruthBoundaryContextEngine implements ContextEngine {
   private sigStore = new SignificanceStore();
   /** Track whether current turn has seen tool results, keyed by sessionId */
   private turnToolState = new Map<string, boolean>();
-  /** Cache last assembled messages per session for compaction guidance */
-  private lastAssembledMessages = new Map<string, AgentMessage[]>();
+  /** Recent messages per session for novelty scoring (bounded, sliding window) */
+  private recentForNovelty = new Map<string, AgentMessage[]>();
+  /** Cache high-significance messages per session for compaction guidance.
+   *  Only stores messages above the preserve threshold — not the full array. */
+  private preserveCandidates = new Map<string, AgentMessage[]>();
   constructor(base: ContextEngine) {
     this.base = base;
     this.info = {
@@ -510,9 +513,15 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     const meta = classifyMessage(params.message, turnHasTools);
     this.store.set(params.sessionId, params.message, meta);
 
-    // Score significance (uses empty recent window for single ingest)
-    const sig = scoreSignificance(params.message, []);
+    // Score significance with session's recent message window
+    const recent = this.recentForNovelty.get(params.sessionId) ?? [];
+    const sig = scoreSignificance(params.message, recent);
     this.sigStore.set(params.sessionId, params.message, sig);
+
+    // Update recent window (keep last 10)
+    recent.push(params.message);
+    if (recent.length > 10) recent.shift();
+    this.recentForNovelty.set(params.sessionId, recent);
 
     return this.base.ingest(params);
   }
@@ -532,15 +541,18 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     }
     const turnHasTools = this.turnToolState.get(params.sessionId) ?? batchTools;
 
-    const priorMessages: AgentMessage[] = [];
+    const recent = this.recentForNovelty.get(params.sessionId) ?? [];
     for (const msg of params.messages) {
       const meta = classifyMessage(msg, turnHasTools);
       this.store.set(params.sessionId, msg, meta);
 
-      const sig = scoreSignificance(msg, priorMessages);
+      const sig = scoreSignificance(msg, recent);
       this.sigStore.set(params.sessionId, msg, sig);
-      priorMessages.push(msg);
+
+      recent.push(msg);
+      if (recent.length > 10) recent.shift();
     }
+    this.recentForNovelty.set(params.sessionId, recent);
 
     if (this.base.ingestBatch) return this.base.ingestBatch(params);
 
@@ -563,8 +575,9 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     model?: string;
     prompt?: string;
   }): Promise<AssembleResult> {
-    // Classify any messages we haven't seen (e.g. loaded from transcript on restart).
+    // Classify and score any messages we haven't seen (e.g. loaded from transcript on restart).
     // For historical messages we don't know turn context, so classify conservatively.
+    const priorForNovelty: AgentMessage[] = [];
     for (let i = 0; i < params.messages.length; i++) {
       const msg = params.messages[i];
       if (!this.store.get(params.sessionId, msg)) {
@@ -577,6 +590,12 @@ export class TruthBoundaryContextEngine implements ContextEngine {
           this.store.set(params.sessionId, msg, { truthClass: "unclassified", confidence: 0.5 });
         }
       }
+      // Score significance for any unscored message
+      if (!this.sigStore.get(params.sessionId, msg)) {
+        const sig = scoreSignificance(msg, priorForNovelty);
+        this.sigStore.set(params.sessionId, msg, sig);
+      }
+      priorForNovelty.push(msg);
     }
 
     const result = await this.base.assemble(params);
@@ -607,8 +626,14 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     if (healthNotice) additions.push(healthNotice);
     if (annotations) additions.push(annotations);
 
-    // Cache assembled messages for compaction guidance
-    this.lastAssembledMessages.set(params.sessionId, filteredMessages);
+    // Cache only high-significance messages for compaction guidance
+    const candidates = filteredMessages.filter((msg) => {
+      const sig = this.sigStore.get(params.sessionId, msg);
+      return sig && sig.score >= COMPACTION_PRESERVE_THRESHOLD;
+    });
+    if (candidates.length > 0) {
+      this.preserveCandidates.set(params.sessionId, candidates);
+    }
 
     return {
       ...result,
@@ -631,15 +656,18 @@ export class TruthBoundaryContextEngine implements ContextEngine {
   // -- Compact (significance-aware) ------------------------------------------
 
   async compact(params: Parameters<ContextEngine["compact"]>[0]): Promise<CompactResult> {
-    // Use cached messages from last assemble() to build significance guidance
-    const cachedMessages = this.lastAssembledMessages.get(params.sessionId) ?? [];
+    // Use cached high-significance messages for compaction guidance
+    const candidates = this.preserveCandidates.get(params.sessionId) ?? [];
 
     const guidance = buildSignificanceGuidanceFromStores(
-      cachedMessages,
+      candidates,
       this.store,
       this.sigStore,
       params.sessionId,
     );
+
+    // Clear cache after use — post-compaction messages will be different
+    this.preserveCandidates.delete(params.sessionId);
 
     // Prepend significance guidance to customInstructions
     if (guidance) {
@@ -668,7 +696,8 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     this.store.clear(params.childSessionKey);
     this.sigStore.clear(params.childSessionKey);
     this.turnToolState.delete(params.childSessionKey);
-    this.lastAssembledMessages.delete(params.childSessionKey);
+    this.preserveCandidates.delete(params.childSessionKey);
+    this.recentForNovelty.delete(params.childSessionKey);
     if (this.base.onSubagentEnded) return this.base.onSubagentEnded(params);
   }
 

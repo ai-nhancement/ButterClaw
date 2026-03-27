@@ -5,13 +5,13 @@
 <h1 align="center">ButterClaw</h1>
 
 <p align="center">
-  <strong>AiMe's governed cognitive architecture + TinkerClaw's channel integrations.</strong><br>
+  <strong>AiMe's governed cognitive architecture + OpenClaw's platform infrastructure.</strong><br>
   <em>The brain of one. The reach of the other.</em>
 </p>
 
 <p align="center">
   <a href="https://github.com/ai-nhancement/AiMe-public"><img src="https://img.shields.io/badge/core-AiMe-2ea44f?style=for-the-badge" alt="Core: AiMe"></a>
-  <a href="https://github.com/globalcaos/tinkerclaw"><img src="https://img.shields.io/badge/channels_from-TinkerClaw-8B6914?style=for-the-badge" alt="Channels: TinkerClaw"></a>
+  <a href="https://github.com/openclaw/openclaw"><img src="https://img.shields.io/badge/platform-OpenClaw-604020?style=for-the-badge" alt="Platform: OpenClaw"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-604020?style=for-the-badge" alt="MIT License"></a>
 </p>
 
@@ -19,15 +19,13 @@
 
 ## What Is ButterClaw?
 
-ButterClaw is a merge of two projects heading in the same direction from different starting points.
+ButterClaw brings a governed cognitive architecture to one of the most popular open-source AI agent platforms on the market.
 
-**[AiMe (Amy)](https://github.com/ai-nhancement/AiMe-public)** is a governed cognitive architecture that has been in continuous daily use since November 2025 — built by a single developer. It has append-only truth separation, a six-layer living portrait, governed proactive initiative, behavioral integrity metrics (RIC, SRL, UVRG), significance-scored memory, and temporal scoping.
+**[OpenClaw](https://github.com/openclaw/openclaw)** is a production-grade agent platform with 87 messaging channel integrations, multi-agent orchestration, model fallback chains, a plugin SDK, and a full HTTP/WebSocket gateway. It is excellent infrastructure — but it has no cognitive architecture. No user model. No truth separation. No behavioral integrity. No governed initiative. Its persona system is a static markdown file (SOUL.md) that the user edits by hand.
 
-**[OpenClaw / TinkerClaw](https://github.com/globalcaos/tinkerclaw)** independently developed a strikingly similar cognitive architecture (ENGRAM, CORTEX, LIMBIC, SYNAPSE, HIPPOCAMPUS) using the same neuroscience-inspired naming conventions. It also has messaging channel integrations (WhatsApp, Discord, Telegram, Slack, Teams), a plugin SDK, multi-agent support, humor and debate subsystems, and a React dashboard.
+**[AiMe (Amy)](https://github.com/ai-nhancement/AiMe-public)** is a governed cognitive architecture that has been in continuous daily use since November 2025 — built by a single developer. It has an append-only evidence ledger, truth separation with external verification, a six-layer living portrait, governed proactive initiative with absence tiers, behavioral integrity metrics (RIC, SRL, UVRG), significance-scored memory, temporal scoping, and demonstrated value extraction. What it lacked was reach — it ran on a local web UI with no messaging platform support.
 
-Both projects arrived at remarkably similar designs through independent parallel development. AiMe's neuroscience-inspired naming (hippocampus, thalamus, cortex, occipital lobe) was chosen personally by its developer — not suggested by AI tools. How OpenClaw converged on nearly identical terminology (ENGRAM, CORTEX, LIMBIC, SYNAPSE, HIPPOCAMPUS) independently is an open question. The overlap in naming, structure, and goals was discovered only when this fork was created.
-
-**ButterClaw** bridges the gap between them. Where AiMe goes deeper (enforcement, integrity scoring, value extraction, governed initiative), ButterClaw brings those capabilities to the OpenClaw ecosystem. Where OpenClaw goes broader (channels, humor, debate, distribution), ButterClaw inherits that reach.
+**ButterClaw** puts AiMe's brain inside OpenClaw's body.
 
 ---
 
@@ -41,7 +39,7 @@ None of that comes from the model. All of it comes from the system.
 
 What AiMe lacked was reach. It ran on a local web UI. No mobile. No messaging platforms. No way for the system to follow you outside the workshop.
 
-TinkerClaw and OpenClaw solved that distribution problem. WhatsApp, Discord, Telegram, Slack, Teams — all wired up and working. They also independently built a substantial cognitive architecture — ENGRAM, CORTEX, LIMBIC, SYNAPSE — with a six-layer persona state, behavioral probes, humor generation, and multi-model debate. Where they differ from AiMe is in depth: passive truth classification instead of active enforcement, cron scheduling instead of governed initiative with absence tiers, and basic importance scoring instead of multi-layer significance.
+OpenClaw solved that distribution problem — 87 messaging platforms, multi-agent support, a plugin SDK, and production-grade infrastructure. But its memory is session transcripts and vector search. Its persona is a static file. Its initiative is a cron scheduler. There is no cognitive layer governing what the system knows, how it learns, or when it should act.
 
 ButterClaw takes the parts each project does best and combines them.
 
@@ -49,78 +47,74 @@ ButterClaw takes the parts each project does best and combines them.
 
 ## How the Codebases Compare
 
-This is not a claim — it is a comparison of what exists in each codebase as of March 2026. OpenClaw and TinkerClaw already have a substantial cognitive architecture (ENGRAM, CORTEX, LIMBIC, SYNAPSE, HIPPOCAMPUS) that was built independently using similar neuroscience-inspired naming conventions. The differences are in depth of implementation, not in whether the concepts exist.
+This is not a claim — it is a comparison of what exists in each codebase as of March 2026.
 
-| Capability | AiMe (Python, local) | OpenClaw / TinkerClaw (TypeScript, distributed) | ButterClaw additions |
-|-----------|------|------------|----------|
-| **Append-only evidence ledger** | Immutable SQLite, 3-tier (ledger + UT + VAT), WAL mode | JSONL event store with ULID ordering, 19 event kinds, append-only invariant | Truth-class metadata on all events |
-| **Truth separation** | User Truth vs. VAT formally enforced; WordNet + Wikidata external anchors; blocks inference when integrity fails | 4-class system (user_truth, grounded, ungrounded, unclassified); classification computed but passive | Active truth boundary layer, grounding ratio monitor with health tiers |
-| **Living portrait** | Six layers live: identity, relational graph, concerns, commitments, behavioral fingerprint, patterns; temporal decay per fact class; concern arcs with lifecycle tracking | Six-layer PersonaState schema: identity, hard rules, traits, voice markers, relational state, humor calibration; drift detection framework exists | — |
-| **Importance-weighted retrieval** | Hybrid RRF fusion (Meilisearch + Qdrant), rolling topic vectors, significance filtering, pair-aware context | FTS top-50 with task-conditioned scoring, MMR deduplication, episodic tier | Importance multiplier (0.6x–1.4x) wired into retrieval pipeline |
-| **Governed initiative** | ThalamoFrontalLoop: 6 signal producers, 5 absence tiers, significance gating, spam prevention, preference learning, deferred signals | Cron service with quiet hours enforcement, heartbeat scheduling | — |
-| **Significance scoring** | Three-layer: affect (0.30) + novelty (0.30) + resolution (0.25) + echo (0.15); plus email, event, and semantic scorers | Basic 1–10 importance field; HIPPOCAMPUS recency/frequency/connection scoring | — |
-| **Temporal scoping** | Per-fact-class decay windows (permanent → momentary), half-life math, reaffirmation tracking, time-windowed retrieval | Time-range markers for evicted events, recency-based temporal decay | — |
-| **Behavioral integrity** | RIC (5-factor: groundedness, calibration, transparency, helpfulness, pressure resistance), SRL (4 traits, honesty gate, drift index, 34 tests), UVRG | Behavioral probes (hard rule, style, full audit), consistency metric, drift detection with EWMA, convergence monitor | — |
-| **Value extraction** | Ethos pipeline: 15 values, `score = demonstrations x significance x resistance x consistency`, no LLM calls | None | — |
-| **Model routing** | Six governed lanes (base, vision, planning, tech, local, game) with rotation | Per-agent model selection with failover chains, Smart Router V2 | — |
-| **Messaging channels** | Local web UI only | WhatsApp, Discord, Telegram, Slack, Teams | Same |
-| **Plugin SDK** | Internal plugin bus | Structured skill SDK with 70+ bundled skills | — |
-| **Multi-machine agents** | Single instance | Distributed agents with routing, Docker/sandbox ready | — |
-| **Humor system** | None | LIMBIC: mathematical humor potential (h_v2), 12 pattern types, bridge discovery, sensitivity gates | — |
-| **Debate / deliberation** | None | SYNAPSE: 5-phase RAAC protocol, cognitive diversity matching, cost-tracked multi-model debate | — |
+| Capability | AiMe (Python, local) | OpenClaw (TypeScript, distributed) |
+|-----------|------|----------|
+| **Append-only evidence ledger** | Immutable SQLite, 3-tier (ledger + User Truth + Verifiable Assistant Truth), WAL mode | None — session transcripts in JSON DAG format |
+| **Truth separation** | User Truth vs. VAT formally enforced; WordNet + Wikidata external anchors; blocks inference when integrity fails | None |
+| **Living portrait (user model)** | Six layers: identity anchors, relational graph, active concerns, commitments, behavioral fingerprint, patterns; temporal decay per fact class; concern arcs with lifecycle tracking | SOUL.md — static markdown file, user-edited manually, no auto-learning |
+| **Governed initiative** | ThalamoFrontalLoop: 6 signal producers, 5 absence tiers, significance gating, spam prevention, preference learning, deferred signals | Cron scheduler with multi-delivery modes (announce, webhook). No significance gating or absence awareness |
+| **Significance scoring** | Three-layer: affect (0.30) + novelty (0.30) + resolution (0.25) + echo (0.15); plus email, event, and semantic scorers | None |
+| **Temporal scoping** | Per-fact-class decay windows (permanent → momentary), half-life math, reaffirmation tracking, time-windowed retrieval | Optional temporal decay multiplier on memory search results |
+| **Behavioral integrity** | RIC (5-factor: groundedness, calibration, transparency, helpfulness, pressure resistance), SRL (4 traits, honesty gate, drift index, 34 tests), UVRG (demonstrated values) | None |
+| **Value extraction** | Ethos pipeline: 15 values, `score = demonstrations x significance x resistance x consistency`, no LLM calls | None |
+| **Memory search** | Hybrid RRF fusion (Meilisearch + Qdrant), rolling topic vectors, significance filtering, pair-aware context | Embeddings-based vector search with optional MMR and temporal decay |
+| **Context management** | CerebralCortex pipeline with stage-based processing | Pluggable context engine with LLM-powered compaction |
+| **Model routing** | Six governed lanes (base, vision, planning, tech, local, game) with rotation | Ordered fallback chain with cooldown tracking, auth-profile-aware |
+| **Multi-agent** | Single instance | Subagent spawning with registry, TTL management, workspace isolation, announcement queue |
+| **Messaging channels** | Local web UI only | **87 platforms**: WhatsApp, Discord, Telegram, Slack, Teams, Signal, Matrix, IRC, iMessage, LINE, and 77 more |
+| **Gateway API** | FastAPI web server | Full WebSocket + HTTP API, OpenResponses-compatible streaming |
+| **Security** | Basic | Deep audit framework with per-channel policies, tool approval, command gating |
+| **Plugin SDK** | Internal plugin bus | Full extension model: channels, providers, memory backends, media, search |
+| **Relationship model** | The Bond — persistent relational primitive with trust, demonstrated values, and integrity measured over time | None — interaction is session-based, not relational |
 
-**The biggest philosophical difference:** AiMe treats the user-AI interaction as a **relationship** — a persistent bond with trust, demonstrated values, and relational integrity measured over time. RIC tracks the health of that bond. UVRG extracts values from lived behavioral evidence. The living portrait models who the user is as a person, not just a preference profile. OpenClaw/TinkerClaw treats the interaction as a **capability** — powerful tools, humor, debate, multi-channel reach, but without the relational foundation.
-
-**AiMe is deeper on cognition and relationship. OpenClaw/TinkerClaw is broader on distribution and infrastructure. ButterClaw bridges the gap.**
+**AiMe treats the user-AI interaction as a relationship. OpenClaw treats it as a session. ButterClaw brings the relationship to the platform.**
 
 ---
 
 ## The Architecture
 
-ButterClaw's cognitive core blends AiMe's governed pipeline with OpenClaw's existing cognitive subsystems:
+ButterClaw's goal is to layer AiMe's cognitive pipeline on top of OpenClaw's agent platform:
 
 ```
 User Input (from any channel: web, WhatsApp, Discord, Telegram, Slack, Teams)
     |
-LogicCore              -- Router + orchestrator
+OpenClaw Gateway        -- HTTP/WebSocket transport, channel routing
     |
-PrefrontalCortex       -- Deterministic lane selection
+AiMe CerebralCortex    -- Governed cognitive pipeline
     |
-CognitiveBridge        -- Execution spine, tool routing
+  ├─ Evidence Ledger    -- Append-only, immutable, truth-classified
+  ├─ Living Portrait    -- 6-layer user model, updated every turn
+  ├─ Significance Gate  -- Score and filter by importance
+  ├─ RIC/SRL Check      -- Behavioral integrity verification
+  └─ Initiative Gov.    -- Should the system speak? When? Why?
     |
-LanguageModel          -- Single LLM call per turn, dispatched to provider
+OpenClaw Agent Runtime  -- Model selection, fallback, tool execution
     |
-LanguageCortex         -- Sole narrator
-    |
-Channel Output         -- Response delivered back to originating platform
+Channel Output          -- Response delivered to originating platform
 ```
 
-### Memory (ENGRAM + HIPPOCAMPUS)
+### Memory
 
-- **Evidence Ledger** — Append-only JSONL event store with ULID ordering (OpenClaw). AiMe adds immutable SQLite with WAL mode and 3-tier separation (ledger + UT + VAT).
-- **Truth Separation** — OpenClaw classifies events into 4 truth classes (user_truth, grounded, ungrounded, unclassified). ButterClaw adds active truth boundary enforcement and grounding ratio monitoring. AiMe goes further with external anchors (WordNet + Wikidata) and inference blocking.
-- **Retrieval** — OpenClaw: FTS with task-conditioned scoring, MMR deduplication, episodic tier. AiMe: hybrid RRF fusion (Meilisearch + Qdrant), rolling topic vectors, significance filtering. ButterClaw adds importance-weighted multipliers to OpenClaw's pipeline.
-- **Significance Filtering** — OpenClaw: basic 1–10 importance with HIPPOCAMPUS recency/frequency scoring. AiMe: three-layer formula (affect + novelty + resolution + echo) with email/event/semantic scorers.
+- **Evidence Ledger** — Append-only immutable store. Every interaction is recorded with truth classification. User statements are authoritative (User Truth). System claims require grounding (Verifiable Assistant Truth). None of this exists in OpenClaw.
+- **Retrieval** — AiMe: hybrid RRF fusion (Meilisearch + Qdrant) with rolling topic vectors and significance filtering. OpenClaw: embeddings-based vector search. ButterClaw will integrate AiMe's retrieval into OpenClaw's pluggable memory backend.
+- **Significance Filtering** — AiMe scores every turn with a four-subscale formula. Recent turns are kept verbatim; older turns are filtered by significance. OpenClaw has no equivalent.
 
-### Identity (CORTEX)
+### Identity
 
-- **Living Portrait** — Both AiMe and OpenClaw implement six-layer persona models. OpenClaw: identity, hard rules, traits, voice markers, relational state, humor calibration. AiMe: identity anchors, relational graph, active concerns, commitments, behavioral fingerprint, patterns — with temporal decay per fact class and concern arc lifecycle tracking.
-- **Behavioral Integrity** — OpenClaw: behavioral probes (hard rule, style, full audit), consistency metric, drift detection with EWMA. AiMe adds RIC (5-factor integrity score with pressure detection), SRL (4 traits, honesty gate, drift index), and UVRG (demonstrated values extraction).
-
-### Humor & Debate (LIMBIC + SYNAPSE) — OpenClaw originals
-
-- **LIMBIC** — Mathematical humor potential function (h_v2), 12 humor pattern types, bridge discovery, sensitivity gates. These do not exist in AiMe.
-- **SYNAPSE** — 5-phase RAAC debate protocol, cognitive diversity matching, cost-tracked multi-model deliberation. These do not exist in AiMe.
+- **Living Portrait** — AiMe maintains a six-layer evolving model of the user: identity anchors, relational graph, active concerns, commitments, behavioral fingerprint, and pattern recognition. Updated every turn. Persists across sessions and months. Temporal decay ensures stale facts lose confidence. OpenClaw's SOUL.md is a static file with no auto-learning.
+- **Behavioral Integrity** — RIC measures groundedness, calibration, transparency, helpfulness, and pressure resistance on every response. SRL tracks honesty, consistency, responsiveness, and self-awareness over time. UVRG extracts demonstrated values from behavioral evidence. OpenClaw has no integrity system.
 
 ### Initiative
 
-- **OpenClaw** — Cron service with quiet hours enforcement and heartbeat scheduling.
-- **AiMe** — ThalamoFrontalLoop: 6 signal producers, 5 absence tiers, significance gating, spam prevention, preference learning. The model never decides when to speak — the system does.
-- **ButterClaw goal** — Port AiMe's governed initiative into OpenClaw's cron infrastructure.
+- **OpenClaw** — Cron scheduler with multi-delivery (announce to channels, webhooks). Jobs run on a timer.
+- **AiMe** — Governed initiative pipeline: 6 signal producers (scheduler, email significance, return recognition, identity continuity, third-party presence, context bridge), 5 absence tiers, significance gating, spam prevention, preference learning. The model never decides when to speak — the system does.
+- **ButterClaw goal** — Port AiMe's governed initiative into OpenClaw's cron and delivery infrastructure.
 
-### Values (AiMe only)
+### Values
 
-- **Ethos UVRG** — Extracts demonstrated values from real behavioral evidence. `score = demonstrations x significance x resistance x consistency`. 15 tracked values, no LLM calls. Does not yet exist in OpenClaw.
+- **Ethos UVRG** — Extracts demonstrated values from real behavioral evidence. `score = demonstrations x significance x resistance x consistency`. 15 tracked values, no LLM calls. Does not exist in OpenClaw.
 - **Environmentally Trained Models** — The long-term direction: training models inside their operating environment on trajectories generated from real relationship evidence.
 
 ---
@@ -132,7 +126,7 @@ Channel Output         -- Response delivered back to originating platform
 | **November 2025** | AiMe development begins |
 | **February 2026** | AiMe v2 repository initiated |
 | **March 2026** | Living portrait, governed initiative, behavioral integrity, significance scoring, temporal scoping, event graph — all live and in daily use |
-| **March 2026** | ButterClaw created — merging AiMe's architecture with TinkerClaw's channel layer |
+| **March 2026** | ButterClaw created — AiMe's cognitive architecture brought to the OpenClaw platform |
 
 AiMe has been in continuous daily use for over four months. The blog posts, essays, and architecture documents are timestamped and publicly available.
 
@@ -151,20 +145,20 @@ The thinking behind this architecture is documented in detail:
 - **[Values, Not Rules](https://github.com/ai-nhancement/AiMe-public/blob/master/blog/03_values_not_rules.md)** — Why we cannot prompt our way to trust
 - **[The Bond](https://github.com/ai-nhancement/AiMe-public/blob/master/architecture/the_bond.md)** — The relational primitive at the center of the system
 
-### From TinkerClaw
+### From OpenClaw
 
-- [TinkerClaw Original README](https://github.com/globalcaos/tinkerclaw)
-- [OpenClaw Original](https://github.com/openclaw/openclaw)
+- [OpenClaw Repository](https://github.com/openclaw/openclaw)
 
 ---
 
 ## Status
 
-ButterClaw is in early integration. The AiMe cognitive core is stable and in daily use. Channel integration from TinkerClaw is being adapted to work inside the governed architecture.
+ButterClaw is in early integration. The AiMe cognitive core is stable and in daily use. OpenClaw's platform infrastructure is being adapted to work inside the governed architecture.
 
-**Phase 1:** Messaging channel bridge (WhatsApp, Discord, Telegram → LogicCore input path)
-**Phase 2:** Plugin SDK adaptation (TinkerClaw skills as governed tools)
-**Phase 3:** Distributed agent support (multi-instance AiMe)
+**Phase 1:** Evidence ledger and truth separation integrated into OpenClaw's context engine
+**Phase 2:** Living portrait layered on top of SOUL.md — auto-learning user model
+**Phase 3:** Governed initiative pipeline wired into OpenClaw's cron and delivery system
+**Phase 4:** Messaging channel bridge — cognitive pipeline accessible from all 87 platforms
 
 ---
 

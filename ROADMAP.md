@@ -1,76 +1,105 @@
 # ButterClaw — Development Roadmap
 
-> AiMe's governed cognitive architecture + TinkerClaw's channel integrations.
+> AiMe's governed cognitive architecture on OpenClaw's platform.
 
-This roadmap tracks planned improvements to the ButterClaw fork. Each item strengthens the cognitive core — truth, memory, governance, integrity — rather than adding surface features. The philosophy: build the brain first, let the extensions inherit the intelligence.
+This roadmap tracks improvements to the ButterClaw fork. Each item strengthens the cognitive core — truth, memory, governance, integrity — rather than adding surface features. The philosophy: build the brain first, let the extensions inherit the intelligence.
 
 ---
 
 ## Completed
 
-| # | Enhancement | Status | Commit |
-|---|-------------|--------|--------|
-| 1 | **Truth boundary layer** — formal separation of user truth, grounded facts, and ungrounded claims. Automatic classification at ingestion. | Done | `73e7d11` |
-| 2 | **Importance-weighted retrieval** — activated the unused importance field in FTS scoring (0.6x–1.4x multiplier). Significance filter drops low-importance events when budget is tight. | Done | `5909690` |
-| 3 | **Grounding ratio monitor** — health metric tracking grounded vs ungrounded output over time. Three tiers (healthy/warning/critical). Metrics recording + context injection when trust drops. | Done | `5909690` |
-| 4 | **Hardening pass** — stop-word filtering in conflict detection, performance fix in classification, output caps, dead import cleanup. | Done | `709fbdd` |
-| 5 | **Banner rebrand** — CLI banner shows ButterClaw identity. | Done | `0b66cf8` |
+| # | Enhancement | Status | Details |
+|---|-------------|--------|---------|
+| 1 | **Branding + Setup Redesign** — CLI banner, browser-based first-run setup (`npm run bc`), auto-config creation, API key validation, auto-open browser | Done | Phases 1-5 complete |
+| 2 | **Truth boundary layer** — 4-class classification (user_truth, grounded, ungrounded, unclassified). Automatic at ingestion. Grounding ratio monitor with 3-tier health alerts (healthy/warning/critical). System prompt injection when trust drops. | Done | 24 tests |
+| 3 | **Importance-weighted retrieval** — Truth-class multipliers (user_truth 1.4x → ungrounded 0.6x). Budget-aware filtering drops ungrounded messages under pressure. Protects user messages, tool results, and recent conversation. | Done | Integrated into truth boundary engine |
+| 4 | **Significance scoring** — 3-signal scorer: role weight (0.30) + information density (0.45) + novelty (0.25). Detects names, dates, decisions, personal facts, quantities, contact info. No LLM calls. | Done | 19 tests |
+| 5 | **Significance-aware compaction** — Compaction now receives guidance about which facts matter. High-significance messages labeled [USER STATED] or [VERIFIED] with instructions to preserve verbatim. Low-value filler summarized freely. | Done | Phase 2 complete, 47 total tests |
 
 ---
 
-## Planned — Core Improvements
+## Planned — Next Up
 
-### 6. First-Run Setup Redesign
-**Priority: Next — HIGHEST VISIBILITY**
-**Difficulty: Medium (gateway + new web UI page)**
+### 6. Wire Context Engine Into Runtime
+**Priority: NEXT — required for everything below to be live**
+**Difficulty: Small (configuration + init wiring)**
 
-The current setup is a terminal wizard with too many choices, no instructions, and no context for what anything does. New users bounce before their first conversation. This is the front door — every single person trying ButterClaw hits this first.
+The truth boundary engine, significance scorer, and compaction guidance are all built and tested — but they need to be registered as the active context engine at startup. Currently the `LegacyContextEngine` is the default. Wiring `TruthBoundaryContextEngine` as a wrapper around it activates all the cognitive features in real conversations.
 
-Replace with: start the gateway, show a single web UI page. One API key field. One model dropdown. One button. Everything else configurable later through the UI as the user learns the system. No terminal wizard for first-time setup. The system should meet you where you are, not demand you understand it before you've used it.
-
-This is the most visible change we can make. It's the first thing every new user sees, and right now it's pushing people away before they ever experience what the system can do.
-
-### 7. Initiative Governance (Cron Governor)
-**Priority: High**
-**Difficulty: Medium (3-4 files)**
-
-TinkerClaw's cron jobs fire purely on schedule — no awareness of user activity, quiet hours, or priority. Add a governor layer that checks:
-- **Quiet hours** — suppress low-priority crons during configurable night window
-- **User activity** — defer non-urgent crons when user has been idle (why interrupt silence?)
-- **Priority gating** — high-priority crons (security alerts) can fire anytime; low-priority (cleanup, consolidation) wait for appropriate moments
-
-This is the first step toward governed initiative. AiMe's ThalamoFrontalLoop has five absence tiers, significance thresholds, spam prevention, and preference learning. The cron governor brings the most impactful slice of that thinking to ButterClaw.
-
-### 8. Persona Drift Measurement
+### 7. Temporal Decay on Stored Facts
 **Priority: High**
 **Difficulty: Medium (2-3 files)**
 
-TinkerClaw has persona traits (0.0–1.0 targets) and drift detection via embedding vectors, but no measurement of whether the agent's actual behavior matches those traits over time. No feedback loop on whether nudges worked.
+Messages lose relevance over time. A fact stated 6 months ago should carry less weight than one stated yesterday — unless it's permanent (name, birthday). Add per-fact-class decay windows inspired by AiMe's temporal scoping:
 
-Add:
-- Behavior tagging on agent outputs (dimensions: humor, directness, proactivity)
-- Drift tracking: observed behavior vs target traits over a sliding window
-- Nudge effectiveness scoring: did the agent correct after a nudge?
+- **Permanent** — name, DOB, family relationships (no decay)
+- **Long** — employer, occupation (18-month half-life)
+- **Medium** — preferences, location (12-month half-life)
+- **Short** — current projects, active concerns (6-month half-life)
+- **Momentary** — mood, temporary state (1-day half-life)
 
-### 9. Truth-Aware Retrieval Integration
+Decay multiplier applied during assembly and compaction guidance.
+
+### 8. Append-Only Evidence Ledger
 **Priority: High**
-**Difficulty: Small (1-2 files)**
+**Difficulty: Medium (new persistence layer)**
 
-Wire the truth boundary layer into the actual retrieval pack assembly so retrieved context is annotated with truth classifications. The agent sees which recalled facts are user-stated, tool-verified, or unverified claims. Currently the truth boundary module exists but is not yet integrated into the retrieval pipeline.
+Currently, truth classifications and significance scores live only in memory — lost on restart. Build a lightweight append-only store (SQLite or JSONL) that persists:
 
-### 10. Intelligent Model Routing
+- Truth class per message
+- Significance score per message
+- Grounding snapshots over time
+
+This is the foundation for everything that needs to survive across sessions: behavioral integrity, value extraction, and long-term user modeling.
+
+---
+
+## Planned — Future
+
+### 9. Initiative Governance (Cron Governor)
+**Priority: High**
+**Difficulty: Medium (3-4 files)**
+
+OpenClaw's cron jobs fire purely on schedule — no awareness of user activity, quiet hours, or priority. Add a governor layer:
+
+- **Quiet hours** — suppress low-priority crons during configurable night window
+- **User activity** — defer non-urgent crons when user is idle
+- **Priority gating** — security alerts fire anytime; cleanup waits for appropriate moments
+
+First step toward governed initiative. AiMe's ThalamoFrontalLoop has five absence tiers, significance thresholds, spam prevention, and preference learning.
+
+### 10. Persona Drift Measurement
+**Priority: Medium**
+**Difficulty: Medium (2-3 files)**
+
+OpenClaw has SOUL.md for persona but no measurement of whether the agent's actual behavior matches over time. Add:
+
+- Behavior tagging on agent outputs (humor, directness, proactivity)
+- Drift tracking: observed behavior vs target traits over a sliding window
+- Nudge effectiveness scoring
+
+### 11. Intelligent Model Routing
 **Priority: Future**
 **Difficulty: Large (system-wide)**
 
-TinkerClaw uses manual per-agent model selection with failover chains. No content-aware routing. AiMe's PrefrontalCortex selects lanes (base/vision/planning/tech/local/game) deterministically based on input content.
+OpenClaw uses manual per-agent model selection with failover chains. No content-aware routing. AiMe's PrefrontalCortex selects lanes (base/vision/planning/tech/local/game) deterministically based on input content. Worth doing eventually but not before the foundational improvements are solid.
 
-This is a large change that touches the agent execution core. Worth doing eventually but not before the foundational improvements above are solid.
-
-### 11. Memory Significance Scoring
+### 12. Behavioral Integrity (RIC/SRL)
 **Priority: Future**
-**Difficulty: Medium**
+**Difficulty: Large**
 
-Move beyond the basic 1-10 importance field to multi-layer significance scoring (keyword + semantic + heuristic) on events at ingestion time. AiMe's three-layer scoring drives retrieval, proactive surfacing, and memory filtering. ButterClaw currently has importance as a static field set at write time with no dynamic scoring.
+Port AiMe's behavioral integrity systems:
+
+- **RIC** — 5-factor relational integrity coefficient (groundedness, calibration, transparency, helpfulness, pressure resistance)
+- **SRL** — Self-reflection layer with 4 traits, honesty gate, drift index
+
+Requires the evidence ledger (#8) to be in place first.
+
+### 13. Value Extraction (Ethos UVRG)
+**Priority: Future**
+**Difficulty: Large**
+
+Port AiMe's demonstrated values pipeline: `score = demonstrations x significance x resistance x consistency`. 15 tracked values, no LLM calls. Requires the evidence ledger (#8) and behavioral integrity (#12).
 
 ---
 
@@ -82,7 +111,7 @@ Every improvement follows the same principles that guide AiMe:
 2. **Memory is truth-separated.** User assertions and tool output are not the same as model inference.
 3. **Initiative is governed, not scheduled.** Proactive behavior requires gates, not just timers.
 4. **Measure everything.** Grounding ratio, drift indices, behavioral health — if you can't measure it, you can't govern it.
-5. **Non-breaking additions.** Every change is backward compatible with existing TinkerClaw sessions.
+5. **Non-breaking additions.** Every change is backward compatible with existing OpenClaw sessions.
 
 ---
 
@@ -90,4 +119,4 @@ Every improvement follows the same principles that guide AiMe:
 
 - **[AiMe Documentation](https://github.com/ai-nhancement/AiMe-public)** — Full architecture, blog posts, essays
 - **[A Day in the Life with AiMe](https://github.com/ai-nhancement/AiMe-public/blob/master/essays/a_day_in_the_life_with_amy.md)** — What a governed cognitive system produces in daily use
-- **[Investment Brief](https://github.com/ai-nhancement/AiMe-public/blob/master/OPPORTUNITY.md)** — What exists, what's planned, what we're looking for
+- **[OpenClaw Repository](https://github.com/openclaw/openclaw)** — Upstream platform

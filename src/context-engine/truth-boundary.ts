@@ -239,13 +239,12 @@ class TruthMetadataStore {
   }
 
   get(sessionId: string, msg: AgentMessage): TruthMeta | undefined {
-    // Try object reference first (O(1), no collisions)
-    const ref = this.refMap.get(msg);
-    if (ref) return ref;
-
-    // Fall back to content key (for transcript-loaded messages)
+    // Only use refMap if the session still exists (clear() removes session but can't clean WeakMap)
     const keyMap = this.sessions.get(sessionId);
     if (!keyMap) return undefined;
+
+    const ref = this.refMap.get(msg);
+    if (ref) return ref;
     return keyMap.get(this.contentKey(msg));
   }
 

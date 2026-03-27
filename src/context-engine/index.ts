@@ -36,3 +36,12 @@ export type {
   GroundingTier,
   GroundingSnapshot,
 } from "./truth-boundary.js";
+
+export {
+  scoreSignificance,
+  SignificanceStore,
+} from "./significance-scorer.js";
+export type {
+  SignificanceMeta,
+  SignalBreakdown,
+} from "./significance-scorer.js";

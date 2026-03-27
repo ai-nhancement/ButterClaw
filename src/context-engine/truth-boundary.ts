@@ -110,7 +110,6 @@ function applyImportanceFilter(
   const protectedStart = messages.length - protectedCount;
 
   const filtered: AgentMessage[] = [];
-  let savedTokens = 0;
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
@@ -121,18 +120,18 @@ function applyImportanceFilter(
       continue;
     }
 
-    // Always keep user messages (they're authoritative context)
-    if ((msg.role as string) === "user") {
+    // Always keep user messages and tool results
+    const role = msg.role as string;
+    if (role === "user" || role === "tool") {
       filtered.push(msg);
       continue;
     }
 
-    const meta = store.getOrDefault(sessionId, msg, i);
+    const meta = store.getOrDefault(sessionId, msg);
     const multiplier = importanceMultiplier(meta);
 
     // Drop ungrounded messages (multiplier < 1.0) when under pressure
     if (multiplier < 1.0) {
-      savedTokens += estimateTokens(msg);
       continue;
     }
 
@@ -186,69 +185,83 @@ function batchHasToolResults(messages: AgentMessage[]): boolean {
 // Truth metadata store (per-session, in-memory, bounded)
 // ---------------------------------------------------------------------------
 
-interface StoredEntry {
-  key: string;
-  meta: TruthMeta;
-}
-
 /**
  * Bounded in-memory store for truth metadata, keyed per session.
+ * Uses a WeakMap on message object references for O(1) lookup when the
+ * same object is passed to both ingest and assemble. Falls back to a
+ * content-based key for messages loaded fresh from transcript.
  * Evicts oldest entries when exceeding MAX_STORE_ENTRIES per session.
  */
 class TruthMetadataStore {
-  private sessions = new Map<string, StoredEntry[]>();
+  /** Primary lookup: exact object reference (fastest, no collisions) */
+  private refMap = new WeakMap<AgentMessage, TruthMeta>();
+  /** Fallback: content-based key for transcript-loaded messages */
+  private sessions = new Map<string, Map<string, TruthMeta>>();
+  /** Ordered keys for eviction */
+  private sessionOrder = new Map<string, string[]>();
 
-  private messageKey(msg: AgentMessage, index: number): string {
+  private contentKey(msg: AgentMessage): string {
     const content =
       typeof msg.content === "string"
-        ? msg.content.slice(0, 80)
-        : JSON.stringify(msg.content).slice(0, 80);
-    return `${msg.timestamp ?? 0}:${index}:${msg.role}:${content}`;
+        ? msg.content.slice(0, 120)
+        : JSON.stringify(msg.content).slice(0, 120);
+    return `${msg.timestamp ?? 0}:${msg.role}:${content}`;
   }
 
-  set(sessionId: string, msg: AgentMessage, meta: TruthMeta, index: number): void {
-    let entries = this.sessions.get(sessionId);
-    if (!entries) {
-      entries = [];
-      this.sessions.set(sessionId, entries);
+  set(sessionId: string, msg: AgentMessage, meta: TruthMeta): void {
+    // Always set on the object reference
+    this.refMap.set(msg, meta);
+
+    // Also set on content key for cross-boundary lookups
+    let keyMap = this.sessions.get(sessionId);
+    let order = this.sessionOrder.get(sessionId);
+    if (!keyMap) {
+      keyMap = new Map();
+      order = [];
+      this.sessions.set(sessionId, keyMap);
+      this.sessionOrder.set(sessionId, order);
     }
 
-    const key = this.messageKey(msg, index);
-
-    // Update existing entry if key matches
-    const existing = entries.findIndex((e) => e.key === key);
-    if (existing !== -1) {
-      entries[existing].meta = meta;
-      return;
+    const key = this.contentKey(msg);
+    if (!keyMap.has(key)) {
+      order!.push(key);
     }
-
-    entries.push({ key, meta });
+    keyMap.set(key, meta);
 
     // Evict oldest entries if over capacity
-    if (entries.length > MAX_STORE_ENTRIES) {
-      const excess = entries.length - MAX_STORE_ENTRIES;
-      entries.splice(0, excess);
+    if (order!.length > MAX_STORE_ENTRIES) {
+      const excess = order!.length - MAX_STORE_ENTRIES;
+      for (let i = 0; i < excess; i++) {
+        keyMap.delete(order![i]);
+      }
+      order!.splice(0, excess);
     }
   }
 
-  get(sessionId: string, msg: AgentMessage, index: number): TruthMeta | undefined {
-    const entries = this.sessions.get(sessionId);
-    if (!entries) return undefined;
-    const key = this.messageKey(msg, index);
-    return entries.find((e) => e.key === key)?.meta;
+  get(sessionId: string, msg: AgentMessage): TruthMeta | undefined {
+    // Try object reference first (O(1), no collisions)
+    const ref = this.refMap.get(msg);
+    if (ref) return ref;
+
+    // Fall back to content key (for transcript-loaded messages)
+    const keyMap = this.sessions.get(sessionId);
+    if (!keyMap) return undefined;
+    return keyMap.get(this.contentKey(msg));
   }
 
-  getOrDefault(sessionId: string, msg: AgentMessage, index: number): TruthMeta {
-    return this.get(sessionId, msg, index) ?? { truthClass: "unclassified", confidence: 0.5 };
+  getOrDefault(sessionId: string, msg: AgentMessage): TruthMeta {
+    return this.get(sessionId, msg) ?? { truthClass: "unclassified", confidence: 0.5 };
   }
 
   allMetas(sessionId: string): TruthMeta[] {
-    const entries = this.sessions.get(sessionId);
-    return entries ? entries.map((e) => e.meta) : [];
+    const keyMap = this.sessions.get(sessionId);
+    return keyMap ? Array.from(keyMap.values()) : [];
   }
 
   clear(sessionId: string): void {
     this.sessions.delete(sessionId);
+    this.sessionOrder.delete(sessionId);
+    // WeakMap entries for cleared sessions will be GC'd automatically
   }
 }
 
@@ -326,7 +339,7 @@ function formatTruthAnnotations(
     // The grounding they provide is reflected in the assistant classification.
     if (role === "tool") continue;
 
-    const meta = store.getOrDefault(sessionId, msg, i);
+    const meta = store.getOrDefault(sessionId, msg);
     const content = truncate(extractContent(msg).trim(), 200);
     if (!content) continue;
 
@@ -394,9 +407,6 @@ export class TruthBoundaryContextEngine implements ContextEngine {
   private store = new TruthMetadataStore();
   /** Track whether current turn has seen tool results, keyed by sessionId */
   private turnToolState = new Map<string, boolean>();
-  /** Per-session message counter for unique key generation */
-  private messageCounters = new Map<string, number>();
-
   constructor(base: ContextEngine) {
     this.base = base;
     this.info = {
@@ -405,12 +415,6 @@ export class TruthBoundaryContextEngine implements ContextEngine {
       version: "1.0.0",
       ownsCompaction: base.info.ownsCompaction,
     };
-  }
-
-  private nextIndex(sessionId: string): number {
-    const current = this.messageCounters.get(sessionId) ?? 0;
-    this.messageCounters.set(sessionId, current + 1);
-    return current;
   }
 
   // -- Bootstrap (delegate) -------------------------------------------------
@@ -447,7 +451,7 @@ export class TruthBoundaryContextEngine implements ContextEngine {
 
     const turnHasTools = this.turnToolState.get(params.sessionId) ?? false;
     const meta = classifyMessage(params.message, turnHasTools);
-    this.store.set(params.sessionId, params.message, meta, this.nextIndex(params.sessionId));
+    this.store.set(params.sessionId, params.message, meta);
 
     return this.base.ingest(params);
   }
@@ -469,7 +473,7 @@ export class TruthBoundaryContextEngine implements ContextEngine {
 
     for (const msg of params.messages) {
       const meta = classifyMessage(msg, turnHasTools);
-      this.store.set(params.sessionId, msg, meta, this.nextIndex(params.sessionId));
+      this.store.set(params.sessionId, msg, meta);
     }
 
     if (this.base.ingestBatch) return this.base.ingestBatch(params);
@@ -497,14 +501,14 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     // For historical messages we don't know turn context, so classify conservatively.
     for (let i = 0; i < params.messages.length; i++) {
       const msg = params.messages[i];
-      if (!this.store.get(params.sessionId, msg, i)) {
+      if (!this.store.get(params.sessionId, msg)) {
         const role = msg.role as string;
         if (role === "user") {
-          this.store.set(params.sessionId, msg, { truthClass: "user_truth", confidence: 1.0 }, i);
+          this.store.set(params.sessionId, msg, { truthClass: "user_truth", confidence: 1.0 });
         } else if (role === "tool") {
-          this.store.set(params.sessionId, msg, { truthClass: "grounded", confidence: 1.0 }, i);
+          this.store.set(params.sessionId, msg, { truthClass: "grounded", confidence: 1.0 });
         } else {
-          this.store.set(params.sessionId, msg, { truthClass: "unclassified", confidence: 0.5 }, i);
+          this.store.set(params.sessionId, msg, { truthClass: "unclassified", confidence: 0.5 });
         }
       }
     }
@@ -576,7 +580,6 @@ export class TruthBoundaryContextEngine implements ContextEngine {
   }): Promise<void> {
     this.store.clear(params.childSessionKey);
     this.turnToolState.delete(params.childSessionKey);
-    this.messageCounters.delete(params.childSessionKey);
     if (this.base.onSubagentEnded) return this.base.onSubagentEnded(params);
   }
 

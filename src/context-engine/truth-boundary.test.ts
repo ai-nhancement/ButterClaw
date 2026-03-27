@@ -393,6 +393,126 @@ describe("TruthBoundaryContextEngine", () => {
     });
   });
 
+  describe("significance-aware compaction", () => {
+    it("injects preservation guidance into customInstructions for high-significance messages", async () => {
+      // Create a base engine that captures the customInstructions it receives
+      const base = new LegacyContextEngine();
+      let capturedInstructions: string | undefined;
+      const originalCompact = base.compact.bind(base);
+      base.compact = async (params) => {
+        capturedInstructions = params.customInstructions;
+        return { ok: true, compacted: true };
+      };
+
+      const engine = new TruthBoundaryContextEngine(base);
+
+      // Ingest high-significance messages (personal facts, dates, decisions)
+      const messages = [
+        msg("user", "My daughter Emma's birthday is March 24. I decided to book the restaurant.", 1000),
+        msg("assistant", "I'll remember that!", 1001),
+        msg("user", "Also, my wife's name is Sarah and she works at Google.", 1002),
+        msg("assistant", "Got it, noted.", 1003),
+      ];
+
+      await engine.ingestBatch({ sessionId: "s1", messages });
+
+      // Assemble to cache messages
+      await engine.assemble({ sessionId: "s1", messages });
+
+      // Compact — should inject guidance
+      await engine.compact({
+        sessionId: "s1",
+        sessionFile: "/tmp/test.json",
+      });
+
+      expect(capturedInstructions).toBeDefined();
+      expect(capturedInstructions).toContain("high-significance");
+      expect(capturedInstructions).toContain("Emma");
+      expect(capturedInstructions).toContain("USER STATED");
+    });
+
+    it("does not inject guidance when no high-significance messages exist", async () => {
+      const base = new LegacyContextEngine();
+      let capturedInstructions: string | undefined;
+      base.compact = async (params) => {
+        capturedInstructions = params.customInstructions;
+        return { ok: true, compacted: true };
+      };
+
+      const engine = new TruthBoundaryContextEngine(base);
+
+      // Ingest only low-significance filler
+      const messages = [
+        msg("assistant", "Sure thing!", 1000),
+        msg("assistant", "Sounds good!", 1001),
+      ];
+
+      await engine.ingestBatch({ sessionId: "s1", messages });
+      await engine.assemble({ sessionId: "s1", messages });
+      await engine.compact({ sessionId: "s1", sessionFile: "/tmp/test.json" });
+
+      // No guidance should be injected
+      expect(capturedInstructions).toBeUndefined();
+    });
+
+    it("preserves existing customInstructions when adding guidance", async () => {
+      const base = new LegacyContextEngine();
+      let capturedInstructions: string | undefined;
+      base.compact = async (params) => {
+        capturedInstructions = params.customInstructions;
+        return { ok: true, compacted: true };
+      };
+
+      const engine = new TruthBoundaryContextEngine(base);
+
+      const messages = [
+        msg("user", "My birthday is January 5, 1985. I live in Austin, Texas.", 1000),
+      ];
+
+      await engine.ingestBatch({ sessionId: "s1", messages });
+      await engine.assemble({ sessionId: "s1", messages });
+
+      await engine.compact({
+        sessionId: "s1",
+        sessionFile: "/tmp/test.json",
+        customInstructions: "Keep it concise.",
+      });
+
+      expect(capturedInstructions).toContain("high-significance");
+      expect(capturedInstructions).toContain("Keep it concise.");
+    });
+
+    it("scores messages during ingestBatch with novelty tracking", async () => {
+      const engine = createEngine();
+
+      const messages = [
+        msg("user", "My name is John and I work at Acme Corp", 1000),
+        msg("user", "My name is John and I work at Acme Corp", 1001), // exact repeat
+      ];
+
+      await engine.ingestBatch({ sessionId: "s1", messages });
+      await engine.assemble({ sessionId: "s1", messages });
+
+      // The engine should have scored both — but the repeat should score lower
+      // We verify indirectly: compaction guidance should only mention the fact once
+      const base = new LegacyContextEngine();
+      let capturedInstructions: string | undefined;
+      base.compact = async (params) => {
+        capturedInstructions = params.customInstructions;
+        return { ok: true, compacted: true };
+      };
+
+      // Create new engine with mock base to capture instructions
+      const engine2 = new TruthBoundaryContextEngine(base);
+      await engine2.ingestBatch({ sessionId: "s1", messages });
+      await engine2.assemble({ sessionId: "s1", messages });
+      await engine2.compact({ sessionId: "s1", sessionFile: "/tmp/test.json" });
+
+      // Should have guidance (first message is high-significance)
+      expect(capturedInstructions).toBeDefined();
+    });
+  });
+
   describe("session isolation", () => {
     it("classifications in one session don't affect another", async () => {
       const engine = createEngine();

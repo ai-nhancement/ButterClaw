@@ -113,7 +113,7 @@ This is not a claim — it is a comparison of what exists in each codebase as of
 | **Behavioral integrity** | RIC (5-factor), SRL (4 traits, honesty gate, drift index, 34 tests), UVRG | None | Planned |
 | **Value extraction** | Ethos pipeline: 15 values, `demos x significance x resistance x consistency`, no LLM calls | None | Planned |
 | **Memory search** | Hybrid RRF fusion (Meilisearch + Qdrant), rolling topic vectors, significance filtering | Embeddings vector search with optional MMR and temporal decay | Inherited from OpenClaw |
-| **Context management** | CerebralCortex pipeline with stage-based processing | Pluggable context engine with LLM-powered compaction | Inherited + truth boundary wrapper |
+| **Context management** | CerebralCortex pipeline with stage-based processing | Pluggable context engine with LLM-powered compaction | Inherited + truth boundary wrapper + **significance-aware compaction** |
 | **Model routing** | 6 governed lanes with rotation | Ordered fallback chain with cooldown, auth-profile-aware | Inherited from OpenClaw |
 | **Multi-agent** | Single instance | Subagent spawning with registry, TTL, workspace isolation | Inherited from OpenClaw |
 | **Messaging channels** | Local web UI only | **87 platforms**: WhatsApp, Discord, Telegram, Slack, Signal, Matrix, Teams, IRC, iMessage, LINE + 77 more | Inherited from OpenClaw |

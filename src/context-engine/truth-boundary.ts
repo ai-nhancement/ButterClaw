@@ -12,6 +12,7 @@ import type {
   SubagentEndReason,
   SubagentSpawnPreparation,
 } from "./types.js";
+import { scoreSignificance, SignificanceStore } from "./significance-scorer.js";
 
 // ---------------------------------------------------------------------------
 // Truth classification types
@@ -390,13 +391,67 @@ export function formatGroundingHealthNotice(snapshot: GroundingSnapshot): string
 }
 
 // ---------------------------------------------------------------------------
+// Significance-aware compaction guidance
+// ---------------------------------------------------------------------------
+
+/** Significance threshold for a message to be called out during compaction */
+const COMPACTION_PRESERVE_THRESHOLD = 0.55;
+const MAX_PRESERVED_FACTS = 15;
+
+/**
+ * Build compaction guidance from the last-assembled messages.
+ * Called during compact() to tell the summarizer which facts matter most.
+ *
+ * Uses the messages stored during the most recent assemble() call,
+ * since compact() doesn't receive a message array.
+ */
+function buildSignificanceGuidanceFromStores(
+  messages: AgentMessage[],
+  truthStore: TruthMetadataStore,
+  sigStore: SignificanceStore,
+  sessionId: string,
+): string {
+  const preserveFacts: string[] = [];
+
+  for (const msg of messages) {
+    if (preserveFacts.length >= MAX_PRESERVED_FACTS) break;
+
+    const sig = sigStore.get(sessionId, msg);
+    if (!sig || sig.score < COMPACTION_PRESERVE_THRESHOLD) continue;
+
+    const truth = truthStore.getOrDefault(sessionId, msg);
+    const text = extractContent(msg).trim();
+    if (!text || text.length < 10) continue;
+
+    const truncated = text.length > 150 ? text.slice(0, 147) + "..." : text;
+    const label =
+      truth.truthClass === "user_truth" ? "[USER STATED]"
+      : truth.truthClass === "grounded" ? "[VERIFIED]"
+      : "";
+
+    preserveFacts.push(`${label} ${truncated}`.trim());
+  }
+
+  if (preserveFacts.length === 0) return "";
+
+  return [
+    "IMPORTANT — The following facts were scored as high-significance.",
+    "Preserve them in the summary as close to verbatim as possible.",
+    "User-stated facts are authoritative and must not be paraphrased into uncertainty.",
+    "",
+    ...preserveFacts.map((f, i) => `${i + 1}. ${f}`),
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // TruthBoundaryContextEngine — wraps any base engine
 // ---------------------------------------------------------------------------
 
 /**
  * A ContextEngine wrapper that adds truth classification to every message
  * at ingestion, injects truth annotations and grounding health into
- * assembled context, and monitors grounding ratio over time.
+ * assembled context, monitors grounding ratio over time, and guides
+ * compaction to preserve high-significance content.
  *
  * Wraps any base ContextEngine without modifying its behavior.
  */
@@ -404,8 +459,11 @@ export class TruthBoundaryContextEngine implements ContextEngine {
   readonly info: ContextEngineInfo;
   private base: ContextEngine;
   private store = new TruthMetadataStore();
+  private sigStore = new SignificanceStore();
   /** Track whether current turn has seen tool results, keyed by sessionId */
   private turnToolState = new Map<string, boolean>();
+  /** Cache last assembled messages per session for compaction guidance */
+  private lastAssembledMessages = new Map<string, AgentMessage[]>();
   constructor(base: ContextEngine) {
     this.base = base;
     this.info = {
@@ -452,6 +510,10 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     const meta = classifyMessage(params.message, turnHasTools);
     this.store.set(params.sessionId, params.message, meta);
 
+    // Score significance (uses empty recent window for single ingest)
+    const sig = scoreSignificance(params.message, []);
+    this.sigStore.set(params.sessionId, params.message, sig);
+
     return this.base.ingest(params);
   }
 
@@ -470,9 +532,14 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     }
     const turnHasTools = this.turnToolState.get(params.sessionId) ?? batchTools;
 
+    const priorMessages: AgentMessage[] = [];
     for (const msg of params.messages) {
       const meta = classifyMessage(msg, turnHasTools);
       this.store.set(params.sessionId, msg, meta);
+
+      const sig = scoreSignificance(msg, priorMessages);
+      this.sigStore.set(params.sessionId, msg, sig);
+      priorMessages.push(msg);
     }
 
     if (this.base.ingestBatch) return this.base.ingestBatch(params);
@@ -540,6 +607,9 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     if (healthNotice) additions.push(healthNotice);
     if (annotations) additions.push(annotations);
 
+    // Cache assembled messages for compaction guidance
+    this.lastAssembledMessages.set(params.sessionId, filteredMessages);
+
     return {
       ...result,
       messages: filteredMessages,
@@ -558,9 +628,27 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     if (this.base.afterTurn) return this.base.afterTurn(params);
   }
 
-  // -- Compact (delegate) ---------------------------------------------------
+  // -- Compact (significance-aware) ------------------------------------------
 
   async compact(params: Parameters<ContextEngine["compact"]>[0]): Promise<CompactResult> {
+    // Use cached messages from last assemble() to build significance guidance
+    const cachedMessages = this.lastAssembledMessages.get(params.sessionId) ?? [];
+
+    const guidance = buildSignificanceGuidanceFromStores(
+      cachedMessages,
+      this.store,
+      this.sigStore,
+      params.sessionId,
+    );
+
+    // Prepend significance guidance to customInstructions
+    if (guidance) {
+      const enhanced = params.customInstructions
+        ? `${guidance}\n\n${params.customInstructions}`
+        : guidance;
+      return this.base.compact({ ...params, customInstructions: enhanced });
+    }
+
     return this.base.compact(params);
   }
 
@@ -578,7 +666,9 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     reason: SubagentEndReason;
   }): Promise<void> {
     this.store.clear(params.childSessionKey);
+    this.sigStore.clear(params.childSessionKey);
     this.turnToolState.delete(params.childSessionKey);
+    this.lastAssembledMessages.delete(params.childSessionKey);
     if (this.base.onSubagentEnded) return this.base.onSubagentEnded(params);
   }
 

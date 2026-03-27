@@ -55,7 +55,7 @@ This is not a claim — it is a comparison of what exists in each codebase as of
 | **Truth separation** | UT vs. VAT enforced; WordNet + Wikidata anchors; blocks inference on failure | None | **4-class classification + grounding monitor + importance-weighted filtering** (24 tests) |
 | **Living portrait (user model)** | 6 layers: identity, relational graph, concerns, commitments, fingerprint, patterns; temporal decay; concern arcs | SOUL.md — static, user-edited, no auto-learning | Planned |
 | **Governed initiative** | ThalamoFrontalLoop: 6 producers, 5 absence tiers, significance gating, spam prevention, preference learning | Cron scheduler with multi-delivery. No significance gating | Planned |
-| **Significance scoring** | 3-layer: affect + novelty + resolution + echo; email, event, semantic scorers | None | **3-signal scorer: role weight + information density + novelty** (19 tests) |
+| **Significance scoring** | 3-layer: affect + novelty + resolution + echo; email, event, semantic scorers | None | **3-signal scorer: role weight + info density + novelty; foundation for significance-aware compaction** (19 tests) |
 | **Temporal scoping** | Per-fact-class decay (permanent → momentary), half-life math, reaffirmation, windowed retrieval | Optional temporal decay on memory search | Planned |
 | **Behavioral integrity** | RIC (5-factor), SRL (4 traits, honesty gate, drift index, 34 tests), UVRG | None | Planned |
 | **Value extraction** | Ethos pipeline: 15 values, `demos x significance x resistance x consistency`, no LLM calls | None | Planned |

@@ -45,6 +45,59 @@ ButterClaw takes the parts each project does best and combines them.
 
 ---
 
+## Quick Start
+
+ButterClaw replaces OpenClaw's terminal setup wizard with a browser-based first-run experience. One command gets you running.
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/ai-nhancement/ButterClaw.git
+cd ButterClaw
+pnpm install
+pnpm build
+```
+
+### 2. Start ButterClaw
+
+```bash
+npm run bc
+```
+
+That's it. On first run, ButterClaw will:
+
+1. Detect that no provider is configured
+2. Create a minimal config with a secure gateway token
+3. Start the gateway on `http://127.0.0.1:18789`
+4. Auto-open your browser to the setup page
+
+### 3. Configure your provider
+
+The setup page lets you pick a provider and paste your API key:
+
+| Provider | What you need |
+|----------|--------------|
+| **Anthropic (Claude)** | API key from [console.anthropic.com](https://console.anthropic.com/) |
+| **Google (Gemini)** | API key from [aistudio.google.com](https://aistudio.google.com/) |
+| **OpenAI (GPT)** | API key from [platform.openai.com](https://platform.openai.com/api-keys) |
+| **Ollama (Local)** | No key needed — install [Ollama](https://ollama.com/) and pull a model |
+
+The setup page validates your key format, writes the config, and redirects you to the chat interface. No terminal wizard. No manual JSON editing.
+
+### 4. Start chatting
+
+After setup, `npm run bc` starts the gateway directly — no setup page, straight to chat. The Control UI is at `http://127.0.0.1:18789`.
+
+### What's different from OpenClaw?
+
+- **`npm run bc`** instead of `openclaw gateway` — defaults to gateway with no subcommand needed
+- **Browser-first setup** — no terminal prompts, no interactive wizard
+- **Auto-config creation** — if no config exists, creates one with secure defaults
+- **Auto-open browser** — opens the setup page automatically on first run
+- **API key validation** — checks key format before saving (e.g., Anthropic keys start with `sk-ant-`)
+
+---
+
 ## How the Codebases Compare
 
 This is not a claim — it is a comparison of what exists in each codebase as of March 2026. The ButterClaw column tracks what has been ported so far.

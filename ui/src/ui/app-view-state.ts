@@ -44,6 +44,7 @@ export type AppViewState = {
   loginShowGatewayPassword: boolean;
   tab: Tab;
   onboarding: boolean;
+  needsSetup: boolean;
   basePath: string;
   connected: boolean;
   theme: ThemeName;

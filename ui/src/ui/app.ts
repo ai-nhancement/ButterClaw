@@ -133,6 +133,7 @@ export class OpenClawApp extends LitElement {
   @state() loginShowGatewayPassword = false;
   @state() tab: Tab = "chat";
   @state() onboarding = resolveOnboardingMode();
+  @state() needsSetup = false;
   @state() connected = false;
   @state() theme: ThemeName = this.settings.theme ?? "claw";
   @state() themeMode: ThemeMode = this.settings.themeMode ?? "system";

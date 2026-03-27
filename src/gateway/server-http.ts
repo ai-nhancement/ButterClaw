@@ -35,6 +35,9 @@ import {
   type ControlUiRootState,
 } from "./control-ui.js";
 import { handleOpenAiEmbeddingsHttpRequest } from "./embeddings-http.js";
+import { handleSetupApiRequest, SETUP_API_PREFIX } from "./setup-api.js";
+import { readConfigFileSnapshotForWrite, writeConfigFile } from "../config/io.js";
+import type { OpenClawConfig } from "../config/types.js";
 import { applyHookMappings } from "./hooks-mapping.js";
 import {
   extractHookToken,
@@ -952,6 +955,25 @@ export function createGatewayHttpServer(opts: {
           rateLimiter,
         }),
       );
+
+      // ButterClaw: first-run setup API — must run before Control UI catch-all
+      if (requestPath.startsWith(SETUP_API_PREFIX)) {
+        requestStages.push({
+          name: "setup-api",
+          run: () =>
+            handleSetupApiRequest(
+              req,
+              res,
+              configSnapshot as OpenClawConfig | undefined,
+              async (patch) => {
+                const { snapshot, writeOptions } = await readConfigFileSnapshotForWrite();
+                const merged = { ...snapshot.config, ...patch };
+                await writeConfigFile(merged as OpenClawConfig, writeOptions);
+              },
+              resolvedAuth.token,
+            ),
+        });
+      }
 
       if (controlUiEnabled) {
         requestStages.push({

@@ -3,6 +3,7 @@ import {
   getActiveEmbeddedRunCount,
   waitForActiveEmbeddedRuns,
 } from "../../agents/pi-embedded-runner/runs.js";
+import { maybeOpenSetupInBrowser } from "../../gateway/auto-open-setup.js";
 import type { startGatewayServer } from "../../gateway/server.js";
 import { acquireGatewayLock } from "../../infra/gateway-lock.js";
 import { restartGatewayProcessWithFreshPid } from "../../infra/process-respawn.js";
@@ -230,6 +231,9 @@ export async function runGatewayLoop(params: {
       onIteration();
       try {
         server = await params.start();
+        if (isFirstStart) {
+          void maybeOpenSetupInBrowser(params.lockPort ?? 18789);
+        }
         isFirstStart = false;
       } catch (err) {
         // On initial startup, let the error propagate so the outer handler

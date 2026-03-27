@@ -6,4 +6,6 @@ export type ControlUiBootstrapConfig = {
   assistantAvatar: string;
   assistantAgentId: string;
   serverVersion?: string;
+  /** True when no auth profiles (API keys) are configured — signals the UI to show the setup page. */
+  needsSetup?: boolean;
 };

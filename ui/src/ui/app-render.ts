@@ -1,5 +1,12 @@
 import { html, nothing } from "lit";
 import {
+  renderSetupPage,
+  createSetupPageState,
+  loadSetupProviders,
+  submitSetup,
+  type SetupPageState,
+} from "./setup-page.ts";
+import {
   buildAgentMainSessionKey,
   parseAgentSessionKey,
   resolveAgentIdFromSessionKey,
@@ -294,6 +301,58 @@ function resolveAssistantAvatarUrl(state: AppViewState): string | undefined {
   return identity?.avatarUrl;
 }
 
+// ─── First-run setup page ────────────────────────────────────────────────────
+
+let _setupState: SetupPageState | null = null;
+let _setupProvidersLoaded = false;
+
+function triggerReRender(state: AppViewState): void {
+  const updatable = state as AppViewState & { requestUpdate?: () => void };
+  updatable.requestUpdate?.();
+}
+
+function renderFirstRunSetup(state: AppViewState) {
+  if (!_setupState) {
+    _setupState = createSetupPageState();
+  }
+
+  if (!_setupProvidersLoaded) {
+    _setupProvidersLoaded = true;
+    void loadSetupProviders(_setupState).then(
+      () => triggerReRender(state),
+      () => triggerReRender(state),
+    );
+  }
+
+  return renderSetupPage(_setupState, {
+    onProviderChange: (id: string) => {
+      _setupState!.selectedProvider = id;
+      _setupState!.apiKey = "";
+      _setupState!.errorMessage = "";
+      triggerReRender(state);
+    },
+    onApiKeyChange: (key: string) => {
+      _setupState!.apiKey = key;
+      _setupState!.errorMessage = "";
+      triggerReRender(state);
+    },
+    onSubmit: () => {
+      void submitSetup(_setupState!).then((success) => {
+        triggerReRender(state);
+        if (success) {
+          setTimeout(() => {
+            _setupState = null;
+            _setupProvidersLoaded = false;
+            window.location.reload();
+          }, 1500);
+        }
+      });
+    },
+  });
+}
+
+// ─── Main app render ─────────────────────────────────────────────────────────
+
 export function renderApp(state: AppViewState) {
   const updatableState = state as AppViewState & { requestUpdate?: () => void };
   const requestHostUpdate =
@@ -306,6 +365,11 @@ export function renderApp(state: AppViewState) {
   // The gateway URL confirmation overlay is always rendered so URL-param flows still work.
   if (!state.connected) {
     return html` ${renderLoginGate(state)} ${renderGatewayUrlConfirmation(state)} `;
+  }
+
+  // Gate: first-run setup — show the setup page instead of the dashboard
+  if (state.needsSetup) {
+    return renderFirstRunSetup(state);
   }
 
   const presenceCount = state.presenceEntries.length;

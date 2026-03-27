@@ -24,6 +24,7 @@ type LifecycleHost = {
   client?: { stop: () => void } | null;
   connectGeneration: number;
   connected?: boolean;
+  needsSetup?: boolean;
   tab: Tab;
   assistantName: string;
   assistantAvatar: string | null;

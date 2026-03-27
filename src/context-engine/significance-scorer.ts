@@ -46,50 +46,39 @@ function scoreRole(msg: AgentMessage): number {
 // Information density — pattern detection, no LLM
 // ---------------------------------------------------------------------------
 
-// Names: capitalized word sequences (2+ words, not sentence-start)
-const NAME_PATTERN = /(?:^|[.!?]\s+)?\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g;
+// All patterns use non-global flags — .test() is stateless, safe for concurrent calls.
+
+// Names: 2+ capitalized words preceded by a lowercase word (filters out sentence starts)
+const NAME_PATTERN = /[a-z]\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/;
 
 // Dates: various formats
-const DATE_PATTERN = /\b(?:\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}|(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}(?:,?\s+\d{4})?|\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b|(?:today|tomorrow|yesterday|next\s+week|last\s+week|this\s+morning|tonight))\b/gi;
+const DATE_PATTERN = /(?:\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}|(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}(?:,?\s+\d{4})?|(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)|(?:today|tomorrow|yesterday|next\s+week|last\s+week|this\s+morning|tonight))/i;
 
-// Numbers with units or currency
-const QUANTITY_PATTERN = /\b\d+(?:\.\d+)?(?:\s*(?:%|dollars?|euros?|pounds?|USD|EUR|GBP|\$|€|£|hrs?|hours?|mins?|minutes?|days?|weeks?|months?|years?|kg|lbs?|miles?|km|GB|MB|TB))\b/gi;
+// Numbers with units or currency (handles both prefix $500 and suffix 6 months)
+const QUANTITY_PATTERN = /(?:[$€£]\s*\d+(?:[,.\d])*|\d+(?:\.\d+)?\s*(?:%|dollars?|euros?|pounds?|USD|EUR|GBP|hrs?|hours?|mins?|minutes?|days?|weeks?|months?|years?|kg|lbs?|miles?|km|GB|MB|TB))/i;
 
 // Decisions and commitments
-const DECISION_WORDS = /\b(?:decided|agreed|committed|promised|confirmed|approved|scheduled|booked|cancelled|deadline|must|need\s+to|going\s+to|will\s+(?:do|send|call|schedule|finish|start|complete)|plan\s+(?:to|is)|assigned|delegated|responsible)\b/gi;
+const DECISION_PATTERN = /\b(?:decided|agreed|committed|promised|confirmed|approved|scheduled|booked|cancelled|deadline|must|need\s+to|going\s+to|will\s+(?:do|send|call|schedule|finish|start|complete)|plan\s+(?:to|is)|assigned|delegated|responsible)\b/i;
 
 // Personal facts (identity-relevant)
-const PERSONAL_PATTERN = /\b(?:my\s+(?:name|wife|husband|partner|daughter|son|kid|child|mom|dad|mother|father|sister|brother|birthday|address|email|phone|job|boss|doctor|dentist|dog|cat)|I\s+(?:work|live|am|was|have|got|started|moved|joined)|born\s+(?:in|on))\b/gi;
+const PERSONAL_PATTERN = /\b(?:my\s+(?:name|wife|husband|partner|daughter|son|kid|child|mom|dad|mother|father|sister|brother|birthday|address|email|phone|job|boss|doctor|dentist|dog|cat)|I\s+(?:work|live|am|was|have|got|started|moved|joined)|born\s+(?:in|on))\b/i;
 
 // Email addresses, phone numbers, URLs
-const CONTACT_PATTERN = /(?:[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|\+?\d[\d\s\-().]{7,}\d|https?:\/\/\S+)/g;
+const CONTACT_PATTERN = /(?:[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|\+?\d[\d\s\-().]{7,}\d|https?:\/\/\S+)/;
 
 function scoreInformationDensity(text: string): number {
   if (!text || text.length < 5) return 0.0;
 
   let signals = 0;
-  let maxSignals = 6; // Normalize against this
 
-  // Count pattern matches (binary: present or not, to avoid over-counting)
   if (NAME_PATTERN.test(text)) signals++;
-  NAME_PATTERN.lastIndex = 0;
-
   if (DATE_PATTERN.test(text)) signals++;
-  DATE_PATTERN.lastIndex = 0;
-
   if (QUANTITY_PATTERN.test(text)) signals++;
-  QUANTITY_PATTERN.lastIndex = 0;
-
-  if (DECISION_WORDS.test(text)) signals++;
-  DECISION_WORDS.lastIndex = 0;
-
+  if (DECISION_PATTERN.test(text)) signals++;
   if (PERSONAL_PATTERN.test(text)) signals++;
-  PERSONAL_PATTERN.lastIndex = 0;
-
   if (CONTACT_PATTERN.test(text)) signals++;
-  CONTACT_PATTERN.lastIndex = 0;
 
-  return Math.min(1.0, signals / (maxSignals * 0.5)); // 3 signals = 1.0
+  return Math.min(1.0, signals / 3); // 3 signals = 1.0, 6 signals still 1.0
 }
 
 // ---------------------------------------------------------------------------

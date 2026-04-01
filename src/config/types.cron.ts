@@ -27,6 +27,27 @@ export type CronFailureDestinationConfig = {
   mode?: "announce" | "webhook";
 };
 
+/** Initiative governance configuration for cron job execution. */
+export type CronGovernorConfig = {
+  enabled?: boolean;
+  /** Quiet hours window — suppress low-priority jobs during this daily window. */
+  quietHours?: {
+    enabled?: boolean;
+    /** Start of quiet window, 24h format "HH:MM" (e.g. "23:00") */
+    start?: string;
+    /** End of quiet window, 24h format "HH:MM" (e.g. "06:00") */
+    end?: string;
+    /** IANA timezone (e.g. "America/New_York"). Defaults to system timezone. */
+    tz?: string;
+  };
+  /** User activity tracking — defer low-priority jobs when user is idle. */
+  activity?: {
+    enabled?: boolean;
+    /** Duration string after which user is considered idle (e.g. "30m"). Default: "30m". */
+    idleThreshold?: string;
+  };
+};
+
 export type CronConfig = {
   enabled?: boolean;
   store?: string;
@@ -57,4 +78,6 @@ export type CronConfig = {
   failureAlert?: CronFailureAlertConfig;
   /** Default destination for failure notifications across all cron jobs. */
   failureDestination?: CronFailureDestinationConfig;
+  /** Initiative governance: quiet hours, user activity, priority gating. */
+  governor?: CronGovernorConfig;
 };

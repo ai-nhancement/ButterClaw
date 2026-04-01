@@ -1,4 +1,4 @@
-import { LegacyContextEngine, registerLegacyContextEngine } from "./legacy.js";
+import { LegacyContextEngine } from "./legacy.js";
 import { registerContextEngineForOwner } from "./registry.js";
 import { TruthBoundaryContextEngine } from "./truth-boundary.js";
 
@@ -13,6 +13,9 @@ import { TruthBoundaryContextEngine } from "./truth-boundary.js";
  * The wrapper is transparent — all existing code that resolves "legacy" gets
  * the cognitive features automatically with no config changes needed.
  *
+ * The factory returns a singleton instance so that truth/significance stores
+ * persist across multiple resolveContextEngine() calls within the same process.
+ *
  * Additional engines can be registered by plugins via
  * `api.registerContextEngine()` during plugin load.
  */
@@ -24,12 +27,20 @@ export function ensureContextEnginesInitialized(): void {
   }
   initialized = true;
 
-  // Register the truth boundary engine as the default "legacy" slot.
-  // Wraps LegacyContextEngine transparently — all compaction, assembly,
-  // and ingestion goes through truth classification + significance scoring.
+  // Singleton: create once, return the same instance on every resolve.
+  // This ensures truth stores, significance stores, and per-session state
+  // survive across multiple resolveContextEngine() calls (agent run,
+  // compaction, subagent lifecycle).
+  let instance: TruthBoundaryContextEngine | undefined;
+
   registerContextEngineForOwner(
     "legacy",
-    () => new TruthBoundaryContextEngine(new LegacyContextEngine()),
+    () => {
+      if (!instance) {
+        instance = new TruthBoundaryContextEngine(new LegacyContextEngine());
+      }
+      return instance;
+    },
     "core",
     { allowSameOwnerRefresh: true },
   );

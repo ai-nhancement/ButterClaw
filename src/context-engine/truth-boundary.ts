@@ -577,7 +577,8 @@ export class TruthBoundaryContextEngine implements ContextEngine {
   }): Promise<AssembleResult> {
     // Classify and score any messages we haven't seen (e.g. loaded from transcript on restart).
     // For historical messages we don't know turn context, so classify conservatively.
-    const priorForNovelty: AgentMessage[] = [];
+    // Only build novelty context for messages that actually need scoring (avoids O(n^2)).
+    let unscoredCount = 0;
     for (let i = 0; i < params.messages.length; i++) {
       const msg = params.messages[i];
       if (!this.store.get(params.sessionId, msg)) {
@@ -590,12 +591,23 @@ export class TruthBoundaryContextEngine implements ContextEngine {
           this.store.set(params.sessionId, msg, { truthClass: "unclassified", confidence: 0.5 });
         }
       }
-      // Score significance for any unscored message
       if (!this.sigStore.get(params.sessionId, msg)) {
-        const sig = scoreSignificance(msg, priorForNovelty);
-        this.sigStore.set(params.sessionId, msg, sig);
+        unscoredCount++;
       }
-      priorForNovelty.push(msg);
+    }
+
+    // Only build novelty window if there are unscored messages
+    if (unscoredCount > 0) {
+      const recentWindow: AgentMessage[] = [];
+      for (const msg of params.messages) {
+        if (!this.sigStore.get(params.sessionId, msg)) {
+          const sig = scoreSignificance(msg, recentWindow);
+          this.sigStore.set(params.sessionId, msg, sig);
+        }
+        // Keep a sliding window for novelty (same as ingest path)
+        recentWindow.push(msg);
+        if (recentWindow.length > 10) recentWindow.shift();
+      }
     }
 
     const result = await this.base.assemble(params);
@@ -626,14 +638,13 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     if (healthNotice) additions.push(healthNotice);
     if (annotations) additions.push(annotations);
 
-    // Cache only high-significance messages for compaction guidance
+    // Cache high-significance messages for compaction guidance.
+    // Always update (even if empty) to avoid stale candidates from prior assemble.
     const candidates = filteredMessages.filter((msg) => {
       const sig = this.sigStore.get(params.sessionId, msg);
       return sig && sig.score >= COMPACTION_PRESERVE_THRESHOLD;
     });
-    if (candidates.length > 0) {
-      this.preserveCandidates.set(params.sessionId, candidates);
-    }
+    this.preserveCandidates.set(params.sessionId, candidates);
 
     return {
       ...result,
@@ -704,23 +715,21 @@ export class TruthBoundaryContextEngine implements ContextEngine {
   // -- Dispose (delegate + cleanup) -----------------------------------------
 
   async dispose(): Promise<void> {
+    // Clear all internal state so a disposed engine doesn't leak data
+    this.turnToolState.clear();
+    this.recentForNovelty.clear();
+    this.preserveCandidates.clear();
+    // Stores don't have a global clear, but they'll be GC'd with the engine
     if (this.base.dispose) await this.base.dispose();
   }
 }
 
 // ---------------------------------------------------------------------------
-// Public API — no registration helper (avoid circular dependency)
+// Public API
 //
-// Registration should be done by the caller:
-//
-//   import { registerContextEngineForOwner } from "./registry.js";
-//   import { TruthBoundaryContextEngine } from "./truth-boundary.js";
-//
-//   registerContextEngineForOwner("truth-boundary", async () => {
-//     const base = new LegacyContextEngine();
-//     return new TruthBoundaryContextEngine(base);
-//   }, "butterclaw", { allowSameOwnerRefresh: true });
-//
+// Registration happens in init.ts via ensureContextEnginesInitialized().
+// The TruthBoundaryContextEngine wraps LegacyContextEngine as a singleton
+// under the "legacy" slot, activating all cognitive features by default.
 // ---------------------------------------------------------------------------
 
 export { formatTruthAnnotations, importanceMultiplier, applyImportanceFilter };

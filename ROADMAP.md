@@ -16,52 +16,13 @@ This roadmap tracks improvements to the ButterClaw fork. Each item strengthens t
 | 4 | **Significance scoring** — 3-signal scorer: role weight (0.30) + information density (0.45) + novelty (0.25). Detects names, dates, decisions, personal facts, quantities, contact info. No LLM calls. | Done | 19 tests |
 | 5 | **Significance-aware compaction** — Compaction now receives guidance about which facts matter. High-significance messages labeled [USER STATED] or [VERIFIED] with instructions to preserve verbatim. Low-value filler summarized freely. | Done | Phase 2 complete, 47 total tests |
 | 6 | **Wired into runtime** — TruthBoundaryContextEngine registered as the default context engine at startup. Wraps LegacyContextEngine transparently. All cognitive features now active in real conversations. | Done | 77 tests passing |
+| 7 | **Temporal decay on stored facts** — 5-category fact classification (permanent/long/medium/short/momentary) with exponential decay half-lives. Pattern-based detection, no LLM calls. Applied during assembly and compaction guidance. Decayed facts labeled [AGING]/[STALE] for compaction. | Done | 36 tests |
+| 8 | **Append-only evidence ledger** — JSONL persistence for truth classifications, significance scores, and grounding snapshots. Batched writes at lifecycle boundaries (afterTurn, compact). Crash-safe, retry on flush failure. Foundation for #12 and #13. | Done | 18 tests |
+| 9 | **Initiative governance (cron governor)** — 4-tier priority system (critical/high/normal/low) with auto-detection from job names. Quiet hours suppression, user activity tracking, priority-based sorting. Configurable via `cron.governor` settings. | Done | 30 tests |
 
 ---
 
 ## Planned — Next Up
-
-### 7. Temporal Decay on Stored Facts
-**Priority: High**
-**Difficulty: Medium (2-3 files)**
-
-Messages lose relevance over time. A fact stated 6 months ago should carry less weight than one stated yesterday — unless it's permanent (name, birthday). Add per-fact-class decay windows inspired by AiMe's temporal scoping:
-
-- **Permanent** — name, DOB, family relationships (no decay)
-- **Long** — employer, occupation (18-month half-life)
-- **Medium** — preferences, location (12-month half-life)
-- **Short** — current projects, active concerns (6-month half-life)
-- **Momentary** — mood, temporary state (1-day half-life)
-
-Decay multiplier applied during assembly and compaction guidance.
-
-### 8. Append-Only Evidence Ledger
-**Priority: High**
-**Difficulty: Medium (new persistence layer)**
-
-Currently, truth classifications and significance scores live only in memory — lost on restart. Build a lightweight append-only store (SQLite or JSONL) that persists:
-
-- Truth class per message
-- Significance score per message
-- Grounding snapshots over time
-
-This is the foundation for everything that needs to survive across sessions: behavioral integrity, value extraction, and long-term user modeling.
-
----
-
-## Planned — Future
-
-### 9. Initiative Governance (Cron Governor)
-**Priority: High**
-**Difficulty: Medium (3-4 files)**
-
-OpenClaw's cron jobs fire purely on schedule — no awareness of user activity, quiet hours, or priority. Add a governor layer:
-
-- **Quiet hours** — suppress low-priority crons during configurable night window
-- **User activity** — defer non-urgent crons when user is idle
-- **Priority gating** — security alerts fire anytime; cleanup waits for appropriate moments
-
-First step toward governed initiative. AiMe's ThalamoFrontalLoop has five absence tiers, significance thresholds, spam prevention, and preference learning.
 
 ### 10. Persona Drift Measurement
 **Priority: Medium**

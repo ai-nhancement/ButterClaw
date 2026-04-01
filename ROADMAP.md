@@ -15,16 +15,11 @@ This roadmap tracks improvements to the ButterClaw fork. Each item strengthens t
 | 3 | **Importance-weighted retrieval** — Truth-class multipliers (user_truth 1.4x → ungrounded 0.6x). Budget-aware filtering drops ungrounded messages under pressure. Protects user messages, tool results, and recent conversation. | Done | Integrated into truth boundary engine |
 | 4 | **Significance scoring** — 3-signal scorer: role weight (0.30) + information density (0.45) + novelty (0.25). Detects names, dates, decisions, personal facts, quantities, contact info. No LLM calls. | Done | 19 tests |
 | 5 | **Significance-aware compaction** — Compaction now receives guidance about which facts matter. High-significance messages labeled [USER STATED] or [VERIFIED] with instructions to preserve verbatim. Low-value filler summarized freely. | Done | Phase 2 complete, 47 total tests |
+| 6 | **Wired into runtime** — TruthBoundaryContextEngine registered as the default context engine at startup. Wraps LegacyContextEngine transparently. All cognitive features now active in real conversations. | Done | 77 tests passing |
 
 ---
 
 ## Planned — Next Up
-
-### 6. Wire Context Engine Into Runtime
-**Priority: NEXT — required for everything below to be live**
-**Difficulty: Small (configuration + init wiring)**
-
-The truth boundary engine, significance scorer, and compaction guidance are all built and tested — but they need to be registered as the active context engine at startup. Currently the `LegacyContextEngine` is the default. Wiring `TruthBoundaryContextEngine` as a wrapper around it activates all the cognitive features in real conversations.
 
 ### 7. Temporal Decay on Stored Facts
 **Priority: High**

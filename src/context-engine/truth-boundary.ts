@@ -13,6 +13,8 @@ import type {
   SubagentSpawnPreparation,
 } from "./types.js";
 import { scoreSignificance, SignificanceStore } from "./significance-scorer.js";
+import { computeMessageDecay, decayLabel, classifyFactCategory } from "./temporal-decay.js";
+import { EvidenceLedger } from "./evidence-ledger.js";
 
 // ---------------------------------------------------------------------------
 // Truth classification types
@@ -410,26 +412,35 @@ function buildSignificanceGuidanceFromStores(
   truthStore: TruthMetadataStore,
   sigStore: SignificanceStore,
   sessionId: string,
+  nowMs?: number,
 ): string {
+  const now = nowMs ?? Date.now();
   const preserveFacts: string[] = [];
 
   for (const msg of messages) {
     if (preserveFacts.length >= MAX_PRESERVED_FACTS) break;
 
     const sig = sigStore.get(sessionId, msg);
-    if (!sig || sig.score < COMPACTION_PRESERVE_THRESHOLD) continue;
+    if (!sig) continue;
+
+    // Apply temporal decay to the significance score
+    const { multiplier } = computeMessageDecay(msg, now);
+    const effectiveScore = sig.score * multiplier;
+
+    if (effectiveScore < COMPACTION_PRESERVE_THRESHOLD) continue;
 
     const truth = truthStore.getOrDefault(sessionId, msg);
     const text = extractContent(msg).trim();
     if (!text || text.length < 10) continue;
 
     const truncated = text.length > 150 ? text.slice(0, 147) + "..." : text;
-    const label =
+    const truthLabel =
       truth.truthClass === "user_truth" ? "[USER STATED]"
       : truth.truthClass === "grounded" ? "[VERIFIED]"
       : "";
+    const ageLabel = decayLabel(multiplier);
 
-    preserveFacts.push(`${label} ${truncated}`.trim());
+    preserveFacts.push(`${truthLabel} ${ageLabel} ${truncated}`.replace(/\s+/g, " ").trim());
   }
 
   if (preserveFacts.length === 0) return "";
@@ -438,6 +449,7 @@ function buildSignificanceGuidanceFromStores(
     "IMPORTANT — The following facts were scored as high-significance.",
     "Preserve them in the summary as close to verbatim as possible.",
     "User-stated facts are authoritative and must not be paraphrased into uncertainty.",
+    "Facts marked [AGING] or [STALE] may be summarized more freely if space is limited.",
     "",
     ...preserveFacts.map((f, i) => `${i + 1}. ${f}`),
   ].join("\n");
@@ -467,6 +479,8 @@ export class TruthBoundaryContextEngine implements ContextEngine {
   /** Cache high-significance messages per session for compaction guidance.
    *  Only stores messages above the preserve threshold — not the full array. */
   private preserveCandidates = new Map<string, AgentMessage[]>();
+  /** Append-only evidence ledgers per session for cross-session persistence */
+  private ledgers = new Map<string, EvidenceLedger>();
   constructor(base: ContextEngine) {
     this.base = base;
     this.info = {
@@ -477,11 +491,57 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     };
   }
 
-  // -- Bootstrap (delegate) -------------------------------------------------
+  // -- Ledger helpers -------------------------------------------------------
+
+  /** Build a stable key for a message (mirrors the content key used by stores) */
+  private messageKey(msg: AgentMessage): string {
+    const content =
+      typeof msg.content === "string"
+        ? msg.content.slice(0, 120)
+        : JSON.stringify(msg.content).slice(0, 120);
+    return `${msg.timestamp ?? 0}:${msg.role}:${content}`;
+  }
+
+  /** Buffer evidence records for a single classified+scored message.
+   *  Creates an unbound ledger if needed so no records are dropped before bootstrap/afterTurn. */
+  private bufferEvidence(
+    sessionId: string,
+    msg: AgentMessage,
+    truth: TruthMeta,
+    sig: { score: number; signals: { roleWeight: number; informationDensity: number; novelty: number } },
+  ): void {
+    const ledger = this.getOrCreateLedger(sessionId);
+    const key = this.messageKey(msg);
+    const text = extractContent(msg);
+    const category = classifyFactCategory(text, msg.role as string);
+
+    ledger.appendTruthClassification(sessionId, key, truth.truthClass, truth.confidence);
+    ledger.appendSignificance(sessionId, key, sig, category);
+  }
+
+  private getOrCreateLedger(sessionId: string): EvidenceLedger {
+    let ledger = this.ledgers.get(sessionId);
+    if (!ledger) {
+      ledger = new EvidenceLedger();
+      this.ledgers.set(sessionId, ledger);
+    }
+    return ledger;
+  }
+
+  /** Expose the ledger for a session (read-only access for external queries) */
+  getLedger(sessionId: string): EvidenceLedger | undefined {
+    return this.ledgers.get(sessionId);
+  }
+
+  // -- Bootstrap (delegate + bind ledger) -----------------------------------
 
   async bootstrap(
     params: Parameters<NonNullable<ContextEngine["bootstrap"]>>[0],
   ): Promise<BootstrapResult> {
+    // Bind the evidence ledger to the session file path
+    const ledger = this.getOrCreateLedger(params.sessionId);
+    if (!ledger.isBound) ledger.bind(params.sessionFile);
+
     if (this.base.bootstrap) return this.base.bootstrap(params);
     return { bootstrapped: false, reason: "base engine has no bootstrap" };
   }
@@ -518,6 +578,9 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     const sig = scoreSignificance(params.message, recent);
     this.sigStore.set(params.sessionId, params.message, sig);
 
+    // Buffer evidence for persistence
+    this.bufferEvidence(params.sessionId, params.message, meta, sig);
+
     // Update recent window (keep last 10)
     recent.push(params.message);
     if (recent.length > 10) recent.shift();
@@ -548,6 +611,9 @@ export class TruthBoundaryContextEngine implements ContextEngine {
 
       const sig = scoreSignificance(msg, recent);
       this.sigStore.set(params.sessionId, msg, sig);
+
+      // Buffer evidence for persistence
+      this.bufferEvidence(params.sessionId, msg, meta, sig);
 
       recent.push(msg);
       if (recent.length > 10) recent.shift();
@@ -640,9 +706,13 @@ export class TruthBoundaryContextEngine implements ContextEngine {
 
     // Cache high-significance messages for compaction guidance.
     // Always update (even if empty) to avoid stale candidates from prior assemble.
+    // Apply temporal decay so old facts don't unnecessarily consume preserve slots.
+    const now = Date.now();
     const candidates = filteredMessages.filter((msg) => {
       const sig = this.sigStore.get(params.sessionId, msg);
-      return sig && sig.score >= COMPACTION_PRESERVE_THRESHOLD;
+      if (!sig) return false;
+      const { multiplier } = computeMessageDecay(msg, now);
+      return sig.score * multiplier >= COMPACTION_PRESERVE_THRESHOLD;
     });
     this.preserveCandidates.set(params.sessionId, candidates);
 
@@ -661,12 +731,30 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     // Reset per-turn tool tracking for next turn
     this.turnToolState.delete(params.sessionId);
 
+    // Bind ledger if not yet bound (first time we see sessionFile for this session)
+    const ledger = this.getOrCreateLedger(params.sessionId);
+    if (!ledger.isBound) ledger.bind(params.sessionFile);
+
+    // Record grounding snapshot for trend tracking
+    const allMetas = this.store.allMetas(params.sessionId);
+    if (allMetas.length > 0) {
+      const snapshot = computeGroundingSnapshot(allMetas);
+      ledger.appendGroundingSnapshot(params.sessionId, snapshot);
+    }
+
+    // Flush buffered evidence to disk (non-blocking best-effort)
+    await ledger.flush().catch(() => {});
+
     if (this.base.afterTurn) return this.base.afterTurn(params);
   }
 
   // -- Compact (significance-aware) ------------------------------------------
 
   async compact(params: Parameters<ContextEngine["compact"]>[0]): Promise<CompactResult> {
+    // Bind ledger if not yet bound
+    const ledger = this.getOrCreateLedger(params.sessionId);
+    if (!ledger.isBound) ledger.bind(params.sessionFile);
+
     // Use cached high-significance messages for compaction guidance
     const candidates = this.preserveCandidates.get(params.sessionId) ?? [];
 
@@ -679,6 +767,9 @@ export class TruthBoundaryContextEngine implements ContextEngine {
 
     // Clear cache after use — post-compaction messages will be different
     this.preserveCandidates.delete(params.sessionId);
+
+    // Flush buffered evidence before compaction reshapes the transcript
+    await ledger.flush().catch(() => {});
 
     // Prepend significance guidance to customInstructions
     if (guidance) {
@@ -709,12 +800,25 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     this.turnToolState.delete(params.childSessionKey);
     this.preserveCandidates.delete(params.childSessionKey);
     this.recentForNovelty.delete(params.childSessionKey);
+    // Flush and dispose the child session's ledger
+    const ledger = this.ledgers.get(params.childSessionKey);
+    if (ledger) {
+      await ledger.flush().catch(() => {});
+      ledger.dispose();
+      this.ledgers.delete(params.childSessionKey);
+    }
     if (this.base.onSubagentEnded) return this.base.onSubagentEnded(params);
   }
 
   // -- Dispose (delegate + cleanup) -----------------------------------------
 
   async dispose(): Promise<void> {
+    // Flush all ledgers before disposing
+    for (const ledger of this.ledgers.values()) {
+      await ledger.flush().catch(() => {});
+      ledger.dispose();
+    }
+    this.ledgers.clear();
     // Clear all internal state so a disposed engine doesn't leak data
     this.turnToolState.clear();
     this.recentForNovelty.clear();

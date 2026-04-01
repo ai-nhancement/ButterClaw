@@ -45,3 +45,19 @@ export type {
   SignificanceMeta,
   SignalBreakdown,
 } from "./significance-scorer.js";
+
+export {
+  classifyFactCategory,
+  computeDecayMultiplier,
+  computeMessageDecay,
+  decayLabel,
+} from "./temporal-decay.js";
+export type { FactCategory } from "./temporal-decay.js";
+
+export { EvidenceLedger } from "./evidence-ledger.js";
+export type {
+  EvidenceRecord,
+  TruthClassificationRecord,
+  SignificanceRecord,
+  GroundingSnapshotRecord,
+} from "./evidence-ledger.js";

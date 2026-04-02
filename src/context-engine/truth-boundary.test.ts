@@ -549,4 +549,71 @@ describe("TruthBoundaryContextEngine", () => {
       }
     });
   });
+
+  describe("temporal context — timestamp annotations", () => {
+    it("annotates assistant messages with compact timestamps", async () => {
+      const engine = createEngine();
+      const ts = new Date("2026-04-01T14:30:00Z").getTime();
+      const messages = [
+        msg("user", "[Wed 2026-04-01 14:29] What time is it?", ts - 60000),
+        msg("assistant", "It's 2:30 PM.", ts),
+      ];
+
+      await engine.ingestBatch({ sessionId: "s1", messages });
+      const result = await engine.assemble({ sessionId: "s1", messages });
+
+      // User message should be unchanged (already has timestamp prefix)
+      const userMsg = result.messages.find((m) => (m.role as string) === "user");
+      expect((userMsg?.content as string)).toContain("[Wed 2026-04-01 14:29]");
+
+      // Assistant message should get a timestamp prefix
+      const assistantMsg = result.messages.find((m) => (m.role as string) === "assistant");
+      expect((assistantMsg?.content as string)).toMatch(/^\[.*2026-04-01 14:30\]/);
+    });
+
+    it("annotates tool messages with compact timestamps", async () => {
+      const engine = createEngine();
+      const ts = new Date("2026-04-01T10:00:00Z").getTime();
+      const messages = [
+        msg("user", "[Wed 2026-04-01 10:00] Check calendar", ts),
+        msg("tool", "3 events today", ts + 1000),
+      ];
+
+      await engine.ingestBatch({ sessionId: "s1", messages });
+      const result = await engine.assemble({ sessionId: "s1", messages });
+
+      const toolMsg = result.messages.find((m) => (m.role as string) === "tool");
+      expect((toolMsg?.content as string)).toMatch(/^\[.*2026-04-01 10:00\]/);
+    });
+
+    it("skips messages without timestamps", async () => {
+      const engine = createEngine();
+      const messages = [
+        { role: "assistant", content: "Hello!" } as AgentMessage,
+      ];
+
+      await engine.ingestBatch({ sessionId: "s1", messages });
+      const result = await engine.assemble({ sessionId: "s1", messages });
+
+      const assistantMsg = result.messages.find((m) => (m.role as string) === "assistant");
+      expect((assistantMsg?.content as string)).toBe("Hello!");
+    });
+
+    it("does not double-stamp user messages that already have a timestamp", async () => {
+      const engine = createEngine();
+      const ts = new Date("2026-04-01T14:30:00Z").getTime();
+      const messages = [
+        msg("user", "[Wed 2026-04-01 14:30 EDT] Hello there", ts),
+      ];
+
+      await engine.ingestBatch({ sessionId: "s1", messages });
+      const result = await engine.assemble({ sessionId: "s1", messages });
+
+      const userMsg = result.messages[0];
+      // Should NOT have double timestamps
+      const content = userMsg.content as string;
+      const matches = content.match(/\[.*\d{4}-\d{2}-\d{2}/g);
+      expect(matches).toHaveLength(1);
+    });
+  });
 });

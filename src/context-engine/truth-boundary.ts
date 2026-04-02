@@ -315,6 +315,74 @@ function extractContent(msg: AgentMessage): string {
   return "";
 }
 
+// ---------------------------------------------------------------------------
+// Temporal context — annotate messages with compact timestamps
+// ---------------------------------------------------------------------------
+
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Already has a [DOW YYYY-MM-DD HH:MM ...] prefix (injected by gateway for user messages). */
+const HAS_TIMESTAMP_PREFIX = /^\[.*\d{4}-\d{2}-\d{2} \d{2}:\d{2}/;
+
+/**
+ * Format a compact timestamp prefix from an epoch-ms value.
+ * Returns `[Wed 2026-04-01 14:30]` or empty string if no valid timestamp.
+ */
+function formatCompactTimestamp(timestampMs: number | undefined): string {
+  if (timestampMs == null || !Number.isFinite(timestampMs)) return "";
+  const d = new Date(timestampMs);
+  if (Number.isNaN(d.getTime())) return "";
+  const dow = DAYS[d.getUTCDay()];
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const min = String(d.getUTCMinutes()).padStart(2, "0");
+  return `[${dow} ${yyyy}-${mm}-${dd} ${hh}:${min}]`;
+}
+
+/**
+ * Annotate messages with timestamp prefixes so the model sees temporal context.
+ *
+ * User messages already get timestamps from gateway injection — skip those.
+ * Assistant and tool messages get a compact UTC timestamp prepended.
+ * Returns shallow copies; originals are not mutated.
+ */
+function annotateWithTimestamps(messages: AgentMessage[]): AgentMessage[] {
+  return messages.map((msg) => {
+    const role = msg.role as string;
+
+    // User messages already have gateway-injected timestamps
+    if (role === "user") {
+      const text = typeof msg.content === "string" ? msg.content : "";
+      if (HAS_TIMESTAMP_PREFIX.test(text)) return msg;
+    }
+
+    // Skip messages without timestamps
+    const ts = msg.timestamp as number | undefined;
+    const prefix = formatCompactTimestamp(ts);
+    if (!prefix) return msg;
+
+    // Prepend timestamp to string content
+    if (typeof msg.content === "string") {
+      return { ...msg, content: `${prefix} ${msg.content}` };
+    }
+
+    // For array content, prepend to first text block
+    if (Array.isArray(msg.content)) {
+      const parts = [...msg.content];
+      const firstTextIdx = parts.findIndex((p: { type?: string }) => p.type === "text");
+      if (firstTextIdx >= 0) {
+        const part = parts[firstTextIdx] as { type: string; text: string };
+        parts[firstTextIdx] = { ...part, text: `${prefix} ${part.text}` };
+        return { ...msg, content: parts };
+      }
+    }
+
+    return msg;
+  });
+}
+
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen - 3) + "...";
@@ -692,11 +760,18 @@ export class TruthBoundaryContextEngine implements ContextEngine {
       tokensEstimate,
     );
 
-    // Compute grounding health
+    // Compute grounding health (uses original messages for store key lookup)
     const allMetas = this.store.allMetas(params.sessionId);
     const snapshot = computeGroundingSnapshot(allMetas);
     const healthNotice = formatGroundingHealthNotice(snapshot);
     const annotations = formatTruthAnnotations(filteredMessages, params.sessionId, this.store);
+
+    // Annotate messages with compact timestamps for temporal awareness.
+    // User messages already have gateway-injected timestamps; this adds
+    // them to assistant and tool messages so the model sees a continuous
+    // temporal thread ("this morning", "yesterday", etc.).
+    // Done after truth annotations to avoid key lookup mismatch.
+    const timestampedMessages = annotateWithTimestamps(filteredMessages);
 
     // Combine into systemPromptAddition
     const additions: string[] = [];
@@ -718,7 +793,7 @@ export class TruthBoundaryContextEngine implements ContextEngine {
 
     return {
       ...result,
-      messages: filteredMessages,
+      messages: timestampedMessages,
       systemPromptAddition: additions.length > 0 ? additions.join("\n\n") : undefined,
     };
   }

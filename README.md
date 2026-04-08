@@ -100,29 +100,31 @@ After setup, `npm run bc` starts the gateway directly — no setup page, straigh
 
 ## How the Codebases Compare
 
-This is not a claim — it is a comparison of what exists in each codebase as of March 2026. The ButterClaw column tracks what has been ported so far.
+This is not a claim — it is a comparison of what exists in each codebase as of April 2026. The ButterClaw column tracks what has been built so far. Items marked with ✅ are new ButterClaw additions not present in OpenClaw.
 
 | Capability | AiMe | OpenClaw | ButterClaw |
 |-----------|------|----------|------------|
-| **Append-only evidence ledger** | Immutable SQLite, 3-tier (ledger + UT + VAT), WAL mode | None — session transcripts in JSON DAG | Planned |
-| **Truth separation** | UT vs. VAT enforced; WordNet + Wikidata anchors; blocks inference on failure | None | **4-class classification + grounding monitor + importance-weighted filtering** (24 tests) |
-| **Living portrait (user model)** | 6 layers: identity, relational graph, concerns, commitments, fingerprint, patterns; temporal decay; concern arcs | SOUL.md — static, user-edited, no auto-learning | Planned |
-| **Governed initiative** | ThalamoFrontalLoop: 6 producers, 5 absence tiers, significance gating, spam prevention, preference learning | Cron scheduler with multi-delivery. No significance gating | Planned |
-| **Significance scoring** | 3-layer: affect + novelty + resolution + echo; email, event, semantic scorers | None | **3-signal scorer: role weight + info density + novelty; drives compaction guidance** (19 tests) |
-| **Temporal scoping** | Per-fact-class decay (permanent → momentary), half-life math, reaffirmation, windowed retrieval | Optional temporal decay on memory search | Planned |
-| **Behavioral integrity** | RIC (5-factor), SRL (4 traits, honesty gate, drift index, 34 tests), UVRG | None | Planned |
-| **Value extraction** | Ethos pipeline: 15 values, `demos x significance x resistance x consistency`, no LLM calls | None | Planned |
+| **Append-only evidence ledger** | Immutable SQLite, 3-tier (ledger + UT + VAT), WAL mode | None — session transcripts in JSON DAG | ✅ **JSONL evidence ledger** — truth classifications, significance scores, grounding snapshots, persona snapshots. Batched writes, crash-safe, retry on failure. (18 tests) |
+| **Truth separation** | UT vs. VAT enforced; WordNet + Wikidata anchors; blocks inference on failure | None | ✅ **4-class classification** (user_truth / grounded / ungrounded / unclassified) + grounding health monitor (3-tier alerts) + importance-weighted filtering under budget pressure. (24 tests) |
+| **Adaptive persona** | 6-layer living portrait: identity, relational graph, concerns, commitments, fingerprint, patterns | SOUL.md — static, user-edited, no auto-learning | ✅ **Adaptive persona engine** — 10 traits configured during setup, evolves via pattern-based signal detection + EMA smoothing. Replaces static SOUL.md. Persists to evidence ledger. (55 tests) |
+| **Governed initiative** | ThalamoFrontalLoop: 6 producers, 5 absence tiers, significance gating, spam prevention, preference learning | Cron scheduler with multi-delivery. No significance gating | ✅ **Cron governor** — 4-tier priority system, quiet hours suppression, user activity tracking, auto-detection from job names. (30 tests) |
+| **Significance scoring** | 3-layer: affect + novelty + resolution + echo; email, event, semantic scorers | None | ✅ **3-signal scorer**: role weight (0.30) + info density (0.45) + novelty (0.25). Drives compaction guidance — high-significance facts preserved verbatim. (19 tests) |
+| **Temporal scoping** | Per-fact-class decay (permanent → momentary), half-life math, reaffirmation, windowed retrieval | Optional temporal decay on memory search | ✅ **5-category fact classification** (permanent / long / medium / short / momentary) with exponential decay half-lives. Applied during assembly and compaction. (36 tests) |
+| **Temporal awareness** | Timestamps in evidence ledger | No message-level timestamps in context | ✅ **Message-level timestamp injection** — user messages timestamped at gateway, assistant/tool messages annotated during assembly. Model sees continuous temporal thread. |
+| **Behavioral integrity** | RIC (5-factor), SRL (4 traits, honesty gate, drift index, 34 tests), UVRG | None | Future |
+| **Value extraction** | Ethos pipeline: 15 values, `demos x significance x resistance x consistency`, no LLM calls | None | Future |
 | **Memory search** | Hybrid RRF fusion (Meilisearch + Qdrant), rolling topic vectors, significance filtering | Embeddings vector search with optional MMR and temporal decay | Inherited from OpenClaw |
-| **Context management** | CerebralCortex pipeline with stage-based processing | Pluggable context engine with LLM-powered compaction | **Active** — truth boundary wraps default engine. Classification, scoring, grounding health, importance filtering, and compaction guidance all live in every conversation. 77 tests. |
+| **Context management** | CerebralCortex pipeline with stage-based processing | Pluggable context engine with LLM-powered compaction | ✅ **Truth Boundary Context Engine** — wraps default engine transparently. All cognitive features (classification, scoring, decay, persona, grounding health, importance filtering, significance-aware compaction) active in every conversation. (188 tests) |
+| **Setup experience** | Manual config | Terminal wizard | ✅ **Browser-based setup** — provider selection, API key validation, persona configuration, auto-open browser. No terminal required. |
 | **Model routing** | 6 governed lanes with rotation | Ordered fallback chain with cooldown, auth-profile-aware | Inherited from OpenClaw |
 | **Multi-agent** | Single instance | Subagent spawning with registry, TTL, workspace isolation | Inherited from OpenClaw |
 | **Messaging channels** | Local web UI only | **87 platforms**: WhatsApp, Discord, Telegram, Slack, Signal, Matrix, Teams, IRC, iMessage, LINE + 77 more | Inherited from OpenClaw |
 | **Gateway API** | FastAPI web server | Full WebSocket + HTTP, OpenResponses-compatible streaming | Inherited from OpenClaw |
 | **Security** | Basic | Deep audit framework, per-channel policies, tool approval, command gating | Inherited from OpenClaw |
 | **Plugin SDK** | Internal plugin bus | Full extension model: channels, providers, memory, media, search | Inherited from OpenClaw |
-| **Relationship model** | The Bond — persistent relational primitive with trust, demonstrated values, integrity over time | None — session-based, not relational | Planned |
+| **Relationship model** | The Bond — persistent relational primitive with trust, demonstrated values, integrity over time | None — session-based, not relational | Future |
 
-**AiMe treats the user-AI interaction as a relationship. OpenClaw treats it as a session. ButterClaw brings the relationship to the platform.**
+**AiMe treats the user-AI interaction as a relationship. OpenClaw treats it as a session. ButterClaw is building the bridge — starting with the cognitive core.**
 
 ---
 
@@ -180,6 +182,7 @@ Channel Output          -- Response delivered to originating platform
 | **February 2026** | AiMe v2 repository initiated |
 | **March 2026** | Living portrait, governed initiative, behavioral integrity, significance scoring, temporal scoping, event graph — all live and in daily use |
 | **March 2026** | ButterClaw created — AiMe's cognitive architecture brought to the OpenClaw platform |
+| **April 2026** | 10 cognitive enhancements shipped: truth boundary, significance scoring, temporal decay, evidence ledger, cron governance, adaptive persona, temporal awareness — 188+ tests |
 
 AiMe has been in continuous daily use for over four months. The blog posts, essays, and architecture documents are timestamped and publicly available.
 
@@ -206,12 +209,19 @@ The thinking behind this architecture is documented in detail:
 
 ## Status
 
-ButterClaw is in early integration. The AiMe cognitive core is stable and in daily use. OpenClaw's platform infrastructure is being adapted to work inside the governed architecture.
+ButterClaw's cognitive core is active and growing. 10 enhancements shipped, 188+ tests, all features live in every conversation.
 
-**Phase 1:** Evidence ledger and truth separation integrated into OpenClaw's context engine
-**Phase 2:** Living portrait layered on top of SOUL.md — auto-learning user model
-**Phase 3:** Governed initiative pipeline wired into OpenClaw's cron and delivery system
-**Phase 4:** Messaging channel bridge — cognitive pipeline accessible from all 87 platforms
+**Completed:**
+- ✅ Browser-based setup with persona configuration
+- ✅ Truth boundary context engine (4-class classification, grounding health, importance filtering)
+- ✅ Significance scoring with compaction guidance
+- ✅ Temporal decay (5-category fact classification with exponential half-lives)
+- ✅ Append-only evidence ledger (truth, significance, grounding, persona snapshots)
+- ✅ Cron governor (priority gating, quiet hours, user activity tracking)
+- ✅ Adaptive persona engine (10 traits, signal detection, EMA adaptation)
+- ✅ Temporal awareness (message-level timestamp injection)
+
+**Up next:** Continued cognitive core improvements — strengthening context management, memory, reasoning, and self-awareness.
 
 ---
 

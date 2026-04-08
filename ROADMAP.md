@@ -19,20 +19,11 @@ This roadmap tracks improvements to the ButterClaw fork. Each item strengthens t
 | 7 | **Temporal decay on stored facts** — 5-category fact classification (permanent/long/medium/short/momentary) with exponential decay half-lives. Pattern-based detection, no LLM calls. Applied during assembly and compaction guidance. Decayed facts labeled [AGING]/[STALE] for compaction. | Done | 36 tests |
 | 8 | **Append-only evidence ledger** — JSONL persistence for truth classifications, significance scores, and grounding snapshots. Batched writes at lifecycle boundaries (afterTurn, compact). Crash-safe, retry on flush failure. Foundation for #12 and #13. | Done | 18 tests |
 | 9 | **Initiative governance (cron governor)** — 4-tier priority system (critical/high/normal/low) with auto-detection from job names. Quiet hours suppression, user activity tracking, priority-based sorting. Configurable via `cron.governor` settings. | Done | 30 tests |
+| 10 | **Adaptive persona engine** — Replaces static SOUL.md with dynamic, user-tailored persona. 10 traits (voice + 9 numeric scales) configured during setup wizard, then adapts via pattern-based signal detection and EMA smoothing. Persists snapshots to evidence ledger. Injected into system prompt at assembly time. | Done | 54 tests |
 
 ---
 
 ## Planned — Next Up
-
-### 10. Persona Drift Measurement
-**Priority: Medium**
-**Difficulty: Medium (2-3 files)**
-
-OpenClaw has SOUL.md for persona but no measurement of whether the agent's actual behavior matches over time. Add:
-
-- Behavior tagging on agent outputs (humor, directness, proactivity)
-- Drift tracking: observed behavior vs target traits over a sliding window
-- Nudge effectiveness scoring
 
 ### 11. Intelligent Model Routing
 **Priority: Future**

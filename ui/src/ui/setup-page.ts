@@ -21,12 +21,27 @@ export interface SetupProvider {
   requiresKey: boolean;
 }
 
+export interface PersonaSetupTrait {
+  id: string;
+  label: string;
+  lowLabel: string;
+  highLabel: string;
+  /** 0.0 = low pole, 0.5 = balanced, 1.0 = high pole */
+  value: number;
+}
+
+export type PersonaVoiceChoice = "male" | "female" | "neutral";
+
 export interface SetupPageState {
   providers: SetupProvider[];
   selectedProvider: string;
   apiKey: string;
   status: "idle" | "loading" | "success" | "error";
   errorMessage: string;
+  /** Multi-step wizard: "provider" → "persona" → "confirm" */
+  step: "provider" | "persona" | "confirm";
+  personaVoice: PersonaVoiceChoice;
+  personaTraits: PersonaSetupTrait[];
 }
 
 // ─── Initial state ───────────────────────────────────────────────────────────
@@ -38,6 +53,19 @@ export function createSetupPageState(): SetupPageState {
     apiKey: "",
     status: "idle",
     errorMessage: "",
+    step: "provider",
+    personaVoice: "neutral",
+    personaTraits: [
+      { id: "formality",     label: "Formality",       lowLabel: "Professional", highLabel: "Casual",        value: 0.5 },
+      { id: "warmth",        label: "Warmth",          lowLabel: "Reserved",     highLabel: "Warm",          value: 0.5 },
+      { id: "humor",         label: "Humor",           lowLabel: "Serious",      highLabel: "Playful",       value: 0.5 },
+      { id: "verbosity",     label: "Verbosity",       lowLabel: "Concise",      highLabel: "Thorough",      value: 0.5 },
+      { id: "directness",    label: "Directness",      lowLabel: "Diplomatic",   highLabel: "Blunt",         value: 0.5 },
+      { id: "encouragement", label: "Encouragement",   lowLabel: "Matter-of-fact", highLabel: "Cheerleader", value: 0.5 },
+      { id: "depth",         label: "Technical Depth",  lowLabel: "Simplified",   highLabel: "Deep-dive",     value: 0.5 },
+      { id: "proactivity",   label: "Proactivity",     lowLabel: "Reactive",     highLabel: "Anticipatory",  value: 0.5 },
+      { id: "expressiveness", label: "Expressiveness", lowLabel: "Text-only",    highLabel: "Emoji-rich",    value: 0.5 },
+    ],
   };
 }
 
@@ -102,6 +130,12 @@ export async function submitSetup(
       body: JSON.stringify({
         provider: state.selectedProvider,
         apiKey: provider.requiresKey ? state.apiKey.trim() : undefined,
+        persona: {
+          voice: state.personaVoice,
+          traits: Object.fromEntries(
+            state.personaTraits.map((t) => [t.id, t.value]),
+          ),
+        },
       }),
     });
 
@@ -143,6 +177,9 @@ export function renderSetupPage(
     onProviderChange: (id: string) => void;
     onApiKeyChange: (key: string) => void;
     onSubmit: () => void;
+    onStepChange: (step: "provider" | "persona" | "confirm") => void;
+    onVoiceChange: (voice: PersonaVoiceChoice) => void;
+    onTraitChange: (traitId: string, value: number) => void;
   },
 ) {
   const providersLoading = state.providers.length === 0 && !state.errorMessage;
@@ -152,106 +189,181 @@ export function renderSetupPage(
   const isSuccess = state.status === "success";
   const isIdle = !isLoading && !isSuccess;
 
+  const goToStep = (step: "provider" | "persona" | "confirm") => {
+    callbacks.onStepChange(step);
+  };
+
   return html`
     <style>${SETUP_PAGE_STYLES}</style>
     <div class="setup-page">
-      <div class="setup-card">
+      <div class="setup-card ${state.step === "persona" ? "setup-card--wide" : ""}">
         <div class="setup-header">
           <h1 class="setup-title">🧈 Welcome to ButterClaw</h1>
-          <p class="setup-subtitle">Get started in three steps. You'll be chatting in under a minute.</p>
+          <p class="setup-subtitle">${
+            state.step === "provider"
+              ? "Let's get you connected first."
+              : state.step === "persona"
+                ? "Now let's shape your assistant's personality."
+                : "You're all set!"
+          }</p>
+          <!-- Step indicator -->
+          <div class="setup-step-indicator">
+            <span class="step-dot ${state.step === "provider" ? "step-dot--active" : "step-dot--done"}"></span>
+            <span class="step-dot ${state.step === "persona" ? "step-dot--active" : state.step === "confirm" ? "step-dot--done" : ""}"></span>
+            <span class="step-dot ${state.step === "confirm" ? "step-dot--active" : ""}"></span>
+          </div>
         </div>
 
-        ${providersLoading
+        ${providersLoading && state.step === "provider"
           ? html`<div class="setup-loading">Loading providers...</div>`
-          : html`
-            <div class="setup-steps">
-              <!-- Step 1: Provider -->
-              <div class="setup-step">
-                <label class="setup-label">1. Choose your AI provider</label>
-                <select
-                  class="setup-select"
-                  .value=${state.selectedProvider}
-                  ?disabled=${!isIdle}
-                  @change=${(e: Event) => {
-                    const target = e.target as HTMLSelectElement;
-                    callbacks.onProviderChange(target.value);
-                  }}
-                >
-                  ${state.providers.map(
-                    (p) => html`<option value=${p.id}>${p.name}</option>`,
-                  )}
-                </select>
-              </div>
+          : nothing}
 
-              <!-- Step 2: API Key (conditional) -->
-              ${showKeyInput
-                ? html`
-                    <div class="setup-step">
-                      <label class="setup-label">2. Paste your API key</label>
-                      <input
-                        type="password"
-                        class="setup-input"
-                        placeholder=${provider?.keyPlaceholder ?? "API key..."}
-                        .value=${state.apiKey}
-                        ?disabled=${!isIdle}
-                        @input=${(e: Event) => {
-                          const target = e.target as HTMLInputElement;
-                          callbacks.onApiKeyChange(target.value);
-                        }}
-                        @keydown=${(e: KeyboardEvent) => {
-                          if (e.key === "Enter" && isIdle) {
-                            callbacks.onSubmit();
-                          }
-                        }}
-                      />
-                      ${provider?.getKeyUrl
-                        ? html`<a
-                            class="setup-key-link"
-                            href=${provider.getKeyUrl}
-                            target="_blank"
-                            rel="noopener"
-                            >Don't have one? Get a key →</a
-                          >`
-                        : nothing}
-                    </div>
-                  `
-                : html`
-                    <div class="setup-step">
-                      <label class="setup-label">2. No API key needed for local models</label>
-                      <p class="setup-hint">Make sure Ollama is running locally.</p>
-                    </div>
-                  `}
-
-              <!-- Step 3: Go -->
-              <div class="setup-step">
-                <button
-                  class="setup-button ${isSuccess ? "setup-button--success" : ""}"
-                  ?disabled=${!isIdle}
-                  @click=${callbacks.onSubmit}
-                >
-                  ${isLoading
-                    ? "Configuring..."
-                    : isSuccess
-                      ? "✓ Ready — Reloading..."
-                      : "Start Chatting"}
-                </button>
-                ${isSuccess
-                  ? html`<a class="setup-reload-link" href="/" @click=${(e: Event) => {
-                      e.preventDefault();
-                      window.location.reload();
-                    }}>Click here if the page doesn't reload automatically.</a>`
-                  : nothing}
-              </div>
-
-              <!-- Error message -->
-              ${state.errorMessage
-                ? html`<div class="setup-error">${state.errorMessage}</div>`
-                : nothing}
+        <!-- Step 1: Provider + API Key -->
+        ${state.step === "provider" ? html`
+          <div class="setup-steps">
+            <div class="setup-step">
+              <label class="setup-label">Choose your AI provider</label>
+              <select
+                class="setup-select"
+                .value=${state.selectedProvider}
+                ?disabled=${!isIdle}
+                @change=${(e: Event) => {
+                  const target = e.target as HTMLSelectElement;
+                  callbacks.onProviderChange(target.value);
+                }}
+              >
+                ${state.providers.map(
+                  (p) => html`<option value=${p.id}>${p.name}</option>`,
+                )}
+              </select>
             </div>
-          `}
+
+            ${showKeyInput
+              ? html`
+                  <div class="setup-step">
+                    <label class="setup-label">Paste your API key</label>
+                    <input
+                      type="password"
+                      class="setup-input"
+                      placeholder=${provider?.keyPlaceholder ?? "API key..."}
+                      .value=${state.apiKey}
+                      ?disabled=${!isIdle}
+                      @input=${(e: Event) => {
+                        const target = e.target as HTMLInputElement;
+                        callbacks.onApiKeyChange(target.value);
+                      }}
+                      @keydown=${(e: KeyboardEvent) => {
+                        if (e.key === "Enter" && isIdle) goToStep("persona");
+                      }}
+                    />
+                    ${provider?.getKeyUrl
+                      ? html`<a class="setup-key-link" href=${provider.getKeyUrl} target="_blank" rel="noopener">Don't have one? Get a key →</a>`
+                      : nothing}
+                  </div>
+                `
+              : html`
+                  <div class="setup-step">
+                    <label class="setup-label">No API key needed for local models</label>
+                    <p class="setup-hint">Make sure Ollama is running locally.</p>
+                  </div>
+                `}
+
+            <div class="setup-step">
+              <button
+                class="setup-button"
+                ?disabled=${!isIdle || (showKeyInput && (!state.apiKey || state.apiKey.trim().length < 10))}
+                @click=${() => goToStep("persona")}
+              >Next — Personalize →</button>
+            </div>
+
+            ${state.errorMessage
+              ? html`<div class="setup-error">${state.errorMessage}</div>`
+              : nothing}
+          </div>
+        ` : nothing}
+
+        <!-- Step 2: Persona -->
+        ${state.step === "persona" ? html`
+          <div class="setup-steps">
+            <div class="setup-step">
+              <label class="setup-label">Voice</label>
+              <div class="persona-toggle-row">
+                ${(["male", "female", "neutral"] as const).map((v) => html`
+                  <button
+                    class="persona-toggle-btn ${state.personaVoice === v ? "persona-toggle-btn--active" : ""}"
+                    @click=${() => callbacks.onVoiceChange(v)}
+                  >${v.charAt(0).toUpperCase() + v.slice(1)}</button>
+                `)}
+              </div>
+            </div>
+
+            ${state.personaTraits.map((trait) => html`
+              <div class="setup-step persona-trait">
+                <label class="setup-label">${trait.label}</label>
+                <div class="persona-toggle-row">
+                  <button
+                    class="persona-toggle-btn ${trait.value === 0.0 ? "persona-toggle-btn--active" : ""}"
+                    @click=${() => callbacks.onTraitChange(trait.id, 0.0)}
+                  >${trait.lowLabel}</button>
+                  <button
+                    class="persona-toggle-btn ${trait.value === 0.5 ? "persona-toggle-btn--active" : ""}"
+                    @click=${() => callbacks.onTraitChange(trait.id, 0.5)}
+                  >Balanced</button>
+                  <button
+                    class="persona-toggle-btn ${trait.value === 1.0 ? "persona-toggle-btn--active" : ""}"
+                    @click=${() => callbacks.onTraitChange(trait.id, 1.0)}
+                  >${trait.highLabel}</button>
+                </div>
+              </div>
+            `)}
+
+            <div class="setup-step persona-nav-row">
+              <button class="setup-button setup-button--secondary" @click=${() => goToStep("provider")}>← Back</button>
+              <button class="setup-button" @click=${() => goToStep("confirm")}>Next — Finish →</button>
+            </div>
+
+            <p class="setup-hint" style="text-align:center;">
+              Don't overthink it — these adapt as you chat.
+            </p>
+          </div>
+        ` : nothing}
+
+        <!-- Step 3: Confirm -->
+        ${state.step === "confirm" ? html`
+          <div class="setup-steps">
+            <div class="setup-step" style="text-align:center;">
+              <p class="setup-confirm-summary">
+                <strong>${provider?.name ?? state.selectedProvider}</strong> provider
+                with a <strong>${state.personaVoice}</strong>,
+                <strong>${describeTraitMix(state.personaTraits)}</strong> personality.
+              </p>
+              <p class="setup-hint">Your persona adapts as you chat — this is just the starting point.</p>
+            </div>
+
+            <div class="setup-step persona-nav-row">
+              <button class="setup-button setup-button--secondary" ?disabled=${!isIdle} @click=${() => goToStep("persona")}>← Back</button>
+              <button
+                class="setup-button ${isSuccess ? "setup-button--success" : ""}"
+                ?disabled=${!isIdle}
+                @click=${callbacks.onSubmit}
+              >${isLoading ? "Configuring..." : isSuccess ? "✓ Ready — Reloading..." : "Start Chatting"}</button>
+            </div>
+
+            ${isSuccess
+              ? html`<a class="setup-reload-link" href="/" @click=${(e: Event) => {
+                  e.preventDefault();
+                  window.location.reload();
+                }}>Click here if the page doesn't reload automatically.</a>`
+              : nothing}
+
+            ${state.errorMessage
+              ? html`<div class="setup-error">${state.errorMessage}</div>`
+              : nothing}
+          </div>
+        ` : nothing}
 
         <div class="setup-footer">
-          <p>You can configure channels, crons, and advanced settings later.</p>
+          <p>You can fine-tune personality and settings anytime later.</p>
           <p class="setup-footer-brand">
             Powered by <a href="https://github.com/ai-nhancement/AiMe-public" target="_blank" rel="noopener">AiMe</a> cognitive architecture.
           </p>
@@ -259,6 +371,18 @@ export function renderSetupPage(
       </div>
     </div>
   `;
+}
+
+/** Summarize the trait mix into a short human-readable phrase. */
+function describeTraitMix(traits: PersonaSetupTrait[]): string {
+  const notable: string[] = [];
+  for (const t of traits) {
+    if (t.value === 0.0) notable.push(t.lowLabel.toLowerCase());
+    else if (t.value === 1.0) notable.push(t.highLabel.toLowerCase());
+  }
+  if (notable.length === 0) return "balanced";
+  if (notable.length <= 3) return notable.join(", ");
+  return notable.slice(0, 3).join(", ") + ` + ${notable.length - 3} more`;
 }
 
 // ─── Styles (injected into the host component's styles) ──────────────────────
@@ -433,5 +557,97 @@ export const SETUP_PAGE_STYLES = `
 
   .setup-footer-brand a:hover {
     text-decoration: underline;
+  }
+
+  /* Wide card for persona step */
+  .setup-card--wide {
+    max-width: 560px;
+  }
+
+  /* Step indicator dots */
+  .setup-step-indicator {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .step-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border-primary, #444);
+    transition: background 0.2s;
+  }
+
+  .step-dot--active {
+    background: var(--accent-primary, #6b8afd);
+  }
+
+  .step-dot--done {
+    background: #2ea44f;
+  }
+
+  /* Persona toggle buttons */
+  .persona-toggle-row {
+    display: flex;
+    gap: 0.35rem;
+  }
+
+  .persona-toggle-btn {
+    flex: 1;
+    padding: 0.45rem 0.3rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    background: var(--bg-primary, #0a0a0a);
+    color: var(--text-secondary, #999);
+    border: 1px solid var(--border-primary, #444);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .persona-toggle-btn:hover {
+    border-color: var(--accent-primary, #6b8afd);
+    color: var(--text-primary, #e0e0e0);
+  }
+
+  .persona-toggle-btn--active {
+    background: var(--accent-primary, #6b8afd);
+    color: #fff;
+    border-color: var(--accent-primary, #6b8afd);
+  }
+
+  .persona-trait {
+    gap: 0.25rem !important;
+  }
+
+  /* Navigation row with back + next */
+  .persona-nav-row {
+    display: flex;
+    gap: 0.75rem;
+    flex-direction: row !important;
+  }
+
+  .setup-button--secondary {
+    flex: 0 0 auto;
+    background: transparent;
+    color: var(--text-secondary, #999);
+    border: 1px solid var(--border-primary, #444);
+  }
+
+  .setup-button--secondary:hover:not(:disabled) {
+    color: var(--text-primary, #e0e0e0);
+    border-color: var(--text-secondary, #999);
+    background: transparent;
+  }
+
+  .setup-confirm-summary {
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--text-primary, #e0e0e0);
+    margin: 0.5rem 0;
   }
 `;

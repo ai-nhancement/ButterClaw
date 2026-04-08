@@ -878,6 +878,13 @@ export const OpenClawSchema = z
       .optional(),
     memory: MemorySchema,
     mcp: McpConfigSchema,
+    persona: z
+      .object({
+        voice: z.union([z.literal("male"), z.literal("female"), z.literal("neutral")]).optional(),
+        traits: z.record(z.string(), z.number().min(0).max(1)).optional(),
+      })
+      .strict()
+      .optional(),
     skills: z
       .object({
         allowBundled: z.array(z.string()).optional(),

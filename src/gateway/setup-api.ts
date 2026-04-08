@@ -82,10 +82,16 @@ interface SetupStatusResponse {
   providers: ProviderInfo[];
 }
 
+interface PersonaSetupPayload {
+  voice?: "male" | "female" | "neutral";
+  traits?: Record<string, number>;
+}
+
 interface SetupConfigureRequest {
   provider: string;
   apiKey?: string;
   model?: string;
+  persona?: PersonaSetupPayload;
 }
 
 interface SetupConfigureResponse {
@@ -272,6 +278,26 @@ async function handleConfigure(
       },
     },
   };
+
+  // Add persona configuration if provided
+  if (body.persona) {
+    const voice = body.persona.voice ?? "neutral";
+    const validVoices = ["male", "female", "neutral"];
+    const traits: Record<string, number> = {};
+
+    if (body.persona.traits && typeof body.persona.traits === "object") {
+      for (const [key, val] of Object.entries(body.persona.traits)) {
+        if (typeof val === "number" && Number.isFinite(val)) {
+          traits[key] = Math.max(0, Math.min(1, val));
+        }
+      }
+    }
+
+    patch.persona = {
+      voice: validVoices.includes(voice) ? voice : "neutral",
+      traits,
+    };
+  }
 
   // Add auth profile if key provided
   if (body.apiKey && provider.requiresKey) {

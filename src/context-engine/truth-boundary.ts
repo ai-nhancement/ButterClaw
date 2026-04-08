@@ -15,6 +15,7 @@ import type {
 import { scoreSignificance, SignificanceStore } from "./significance-scorer.js";
 import { computeMessageDecay, decayLabel, classifyFactCategory } from "./temporal-decay.js";
 import { EvidenceLedger } from "./evidence-ledger.js";
+import { PersonaEngine, createTraitsFromSetup, type PersonaSnapshot, type PersonaVoice } from "./persona-engine.js";
 
 // ---------------------------------------------------------------------------
 // Truth classification types
@@ -549,6 +550,10 @@ export class TruthBoundaryContextEngine implements ContextEngine {
   private preserveCandidates = new Map<string, AgentMessage[]>();
   /** Append-only evidence ledgers per session for cross-session persistence */
   private ledgers = new Map<string, EvidenceLedger>();
+  /** Per-session adaptive persona engines */
+  private personas = new Map<string, PersonaEngine>();
+  /** Default persona traits from config (set once at init, used for new sessions) */
+  private defaultPersonaTraits: import("./persona-engine.js").PersonaTraits | undefined;
   constructor(base: ContextEngine) {
     this.base = base;
     this.info = {
@@ -601,6 +606,61 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     return this.ledgers.get(sessionId);
   }
 
+  // -- Persona helpers -------------------------------------------------------
+
+  private getOrCreatePersona(sessionId: string): PersonaEngine {
+    let engine = this.personas.get(sessionId);
+    if (!engine) {
+      // Start from config-supplied traits if available, otherwise defaults
+      engine = new PersonaEngine(this.defaultPersonaTraits);
+      this.personas.set(sessionId, engine);
+    }
+    return engine;
+  }
+
+  /** Expose the persona engine for a session (for external config injection) */
+  getPersona(sessionId: string): PersonaEngine | undefined {
+    return this.personas.get(sessionId);
+  }
+
+  /**
+   * Set the default persona traits used for new sessions.
+   * Called once at init from config.persona values.
+   */
+  setDefaultPersona(traits: import("./persona-engine.js").PersonaTraits): void {
+    this.defaultPersonaTraits = traits;
+  }
+
+  /**
+   * Initialize the persona for a session from config-supplied setup traits.
+   * Call once during bootstrap when persona config is available.
+   */
+  initPersonaFromConfig(
+    sessionId: string,
+    voice: PersonaVoice,
+    traits: Record<string, number>,
+  ): void {
+    const initial = createTraitsFromSetup(voice, traits);
+    const engine = new PersonaEngine(initial);
+    this.personas.set(sessionId, engine);
+  }
+
+  /**
+   * Restore persona from the most recent ledger snapshot.
+   * Called during bootstrap after ledger is bound.
+   */
+  async restorePersonaFromLedger(sessionId: string): Promise<boolean> {
+    const ledger = this.ledgers.get(sessionId);
+    if (!ledger?.isBound) return false;
+
+    const latest = await ledger.readLatestPersona();
+    if (!latest) return false;
+
+    const engine = this.getOrCreatePersona(sessionId);
+    engine.restore(latest.snapshot);
+    return true;
+  }
+
   // -- Bootstrap (delegate + bind ledger) -----------------------------------
 
   async bootstrap(
@@ -609,6 +669,11 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     // Bind the evidence ledger to the session file path
     const ledger = this.getOrCreateLedger(params.sessionId);
     if (!ledger.isBound) ledger.bind(params.sessionFile);
+
+    // Restore persona from the most recent ledger snapshot (cross-session continuity).
+    // If no snapshot exists, the persona stays at defaults (or config-supplied initial traits
+    // if initPersonaFromConfig was called before bootstrap).
+    await this.restorePersonaFromLedger(params.sessionId).catch(() => {});
 
     if (this.base.bootstrap) return this.base.bootstrap(params);
     return { bootstrapped: false, reason: "base engine has no bootstrap" };
@@ -653,6 +718,11 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     recent.push(params.message);
     if (recent.length > 10) recent.shift();
     this.recentForNovelty.set(params.sessionId, recent);
+
+    // Observe user messages for persona signals
+    if (role === "user" && typeof params.message.content === "string") {
+      this.getOrCreatePersona(params.sessionId).observe(params.message.content);
+    }
 
     return this.base.ingest(params);
   }
@@ -773,8 +843,13 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     // Done after truth annotations to avoid key lookup mismatch.
     const timestampedMessages = annotateWithTimestamps(filteredMessages);
 
+    // Generate adaptive persona guidance
+    const personaEngine = this.personas.get(params.sessionId);
+    const personaPrompt = personaEngine?.prompt() ?? "";
+
     // Combine into systemPromptAddition
     const additions: string[] = [];
+    if (personaPrompt) additions.push(personaPrompt);
     if (result.systemPromptAddition) additions.push(result.systemPromptAddition);
     if (healthNotice) additions.push(healthNotice);
     if (annotations) additions.push(annotations);
@@ -815,6 +890,12 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     if (allMetas.length > 0) {
       const snapshot = computeGroundingSnapshot(allMetas);
       ledger.appendGroundingSnapshot(params.sessionId, snapshot);
+    }
+
+    // Persist persona snapshot if traits have changed
+    const persona = this.personas.get(params.sessionId);
+    if (persona?.isDirty) {
+      ledger.appendPersonaSnapshot(params.sessionId, persona.snapshot());
     }
 
     // Flush buffered evidence to disk (non-blocking best-effort)
@@ -875,6 +956,7 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     this.turnToolState.delete(params.childSessionKey);
     this.preserveCandidates.delete(params.childSessionKey);
     this.recentForNovelty.delete(params.childSessionKey);
+    this.personas.delete(params.childSessionKey);
     // Flush and dispose the child session's ledger
     const ledger = this.ledgers.get(params.childSessionKey);
     if (ledger) {
@@ -898,6 +980,7 @@ export class TruthBoundaryContextEngine implements ContextEngine {
     this.turnToolState.clear();
     this.recentForNovelty.clear();
     this.preserveCandidates.clear();
+    this.personas.clear();
     // Stores don't have a global clear, but they'll be GC'd with the engine
     if (this.base.dispose) await this.base.dispose();
   }

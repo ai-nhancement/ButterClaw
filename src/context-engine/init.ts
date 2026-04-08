@@ -1,4 +1,6 @@
+import { loadConfig } from "../config/io.js";
 import { LegacyContextEngine } from "./legacy.js";
+import { createTraitsFromSetup, type PersonaVoice } from "./persona-engine.js";
 import { registerContextEngineForOwner } from "./registry.js";
 import { TruthBoundaryContextEngine } from "./truth-boundary.js";
 
@@ -38,6 +40,23 @@ export function ensureContextEnginesInitialized(): void {
     () => {
       if (!instance) {
         instance = new TruthBoundaryContextEngine(new LegacyContextEngine());
+
+        // Load persona config if set during setup, so sessions start
+        // with the user's chosen personality rather than bland defaults.
+        try {
+          const cfg = loadConfig();
+          const persona = cfg?.persona;
+          if (persona?.voice || persona?.traits) {
+            instance.setDefaultPersona(
+              createTraitsFromSetup(
+                (persona.voice as PersonaVoice) ?? "neutral",
+                persona.traits ?? {},
+              ),
+            );
+          }
+        } catch {
+          // Config not available yet (first run) — use defaults
+        }
       }
       return instance;
     },

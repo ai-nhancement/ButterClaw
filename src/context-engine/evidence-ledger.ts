@@ -3,6 +3,7 @@ import path from "node:path";
 import type { TruthClass, GroundingSnapshot } from "./truth-boundary.js";
 import type { SignificanceMeta } from "./significance-scorer.js";
 import type { FactCategory } from "./temporal-decay.js";
+import type { PersonaSnapshot } from "./persona-engine.js";
 
 // ---------------------------------------------------------------------------
 // Evidence record types
@@ -41,10 +42,16 @@ export interface GroundingSnapshotRecord extends EvidenceRecordBase {
   classified: number;
 }
 
+export interface PersonaSnapshotRecord extends EvidenceRecordBase {
+  type: "persona";
+  snapshot: PersonaSnapshot;
+}
+
 export type EvidenceRecord =
   | TruthClassificationRecord
   | SignificanceRecord
-  | GroundingSnapshotRecord;
+  | GroundingSnapshotRecord
+  | PersonaSnapshotRecord;
 
 // ---------------------------------------------------------------------------
 // Evidence ledger — append-only JSONL persistence
@@ -139,6 +146,18 @@ export class EvidenceLedger {
     });
   }
 
+  appendPersonaSnapshot(
+    sessionId: string,
+    snapshot: PersonaSnapshot,
+  ): void {
+    this.buffer.push({
+      type: "persona",
+      ts: new Date().toISOString(),
+      sessionId,
+      snapshot,
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Flush buffered records to disk
   // -------------------------------------------------------------------------
@@ -211,6 +230,16 @@ export class EvidenceLedger {
   async readGroundingHistory(): Promise<GroundingSnapshotRecord[]> {
     const all = await this.readAll();
     return all.filter((r): r is GroundingSnapshotRecord => r.type === "grounding");
+  }
+
+  /**
+   * Read the most recent persona snapshot, if any.
+   * Returns undefined if no persona snapshots exist yet.
+   */
+  async readLatestPersona(): Promise<PersonaSnapshotRecord | undefined> {
+    const all = await this.readAll();
+    const personas = all.filter((r): r is PersonaSnapshotRecord => r.type === "persona");
+    return personas.length > 0 ? personas[personas.length - 1] : undefined;
   }
 
   // -------------------------------------------------------------------------

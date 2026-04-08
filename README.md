@@ -118,6 +118,7 @@ This is not a claim — it is a comparison of what exists in each codebase as of
 | **Setup experience** | Manual config | Terminal wizard | ✅ **Browser-based setup** — provider selection, API key validation, persona configuration, auto-open browser. No terminal required. |
 | **Model routing** | 6 governed lanes with rotation | Ordered fallback chain with cooldown, auth-profile-aware | Inherited from OpenClaw |
 | **Multi-agent** | Single instance | Subagent spawning with registry, TTL, workspace isolation | Inherited from OpenClaw |
+| **Text-to-speech** | 5 providers: Azure (primary), Edge (fallback), ElevenLabs, Piper (local), Kokī; voice widget with click-to-switch and fallback chains | 3 providers: OpenAI, ElevenLabs, Microsoft Edge; Talk Mode (continuous voice loop); telephony via Twilio/Telnyx; Discord/Telegram voice messages; inline directives for mid-response voice switching | Inherited from OpenClaw |
 | **Messaging channels** | Local web UI only | **87 platforms**: WhatsApp, Discord, Telegram, Slack, Signal, Matrix, Teams, IRC, iMessage, LINE + 77 more | Inherited from OpenClaw |
 | **Gateway API** | FastAPI web server | Full WebSocket + HTTP, OpenResponses-compatible streaming | Inherited from OpenClaw |
 | **Security** | Basic | Deep audit framework, per-channel policies, tool approval, command gating | Inherited from OpenClaw |
